@@ -1,0 +1,326 @@
+
+#version 430
+
+#extension GL_ARB_bindless_texture : require
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(rgba32f, binding = 0) uniform image2D imgOutput;
+
+// --------------------------------------------------------
+
+const float PI = 3.1415926f;
+
+// --------------------------------------------------------
+
+uniform mat4 ViewMatrix;
+uniform mat4 ProjMatrix;
+uniform mat4 InvProjMatrix;
+uniform uint FrameCount;
+uniform vec2 FrameDimensions;
+
+uniform sampler2D PreviousPathTracingTexture;
+
+// --------------------------------------------------------
+
+struct MeshInstance 
+{
+	uint VerticesStartIndex;
+	uint VerticesCount;
+	uint IndicesStartIndex;
+	uint IndicesCount;
+};
+
+// Must match the allowed semantics
+struct Vertex 
+{
+	vec3 pos;
+	vec3 nor;
+	vec2 uv;
+};
+
+struct Environment
+{
+	sampler2D HDRI;
+	float skyRotationCos;
+    float skyRotationSin;
+};
+
+layout(std430, binding = 0) readonly buffer MeshInstancesBuffer
+{
+    MeshInstance data[];
+} meshInstances;
+
+layout(std430, binding = 1) readonly buffer VerticesBuffer
+{
+    Vertex data[];
+} vertices;
+
+layout(std430, binding = 2) readonly buffer IndicesBuffer
+{
+    uint data[];
+} indices;
+
+layout(std430, binding = 3) readonly buffer DiffuseTexturesBuffer
+{
+    sampler2D data[];
+} diffuseTextures;
+
+layout(std430, binding = 4) readonly buffer NormalTexturesBuffer
+{
+    sampler2D data[];
+} normalTextures;
+
+layout(std430, binding = 5) readonly buffer EnvironmentBuffer
+{
+    Environment data;
+} environment;
+
+// --------------------------------------------------------
+
+struct RayTracingMaterial
+{
+	vec3 color;
+	vec3 normal;
+
+	void Initialize()
+	{
+		color = vec3(0.0f);
+		normal = vec3(0.0f);
+	}
+};
+
+struct Ray
+{
+	vec3 origin;
+	vec3 direction;
+
+	void Initialize()
+	{
+		origin = vec3(0.0f);
+		direction = vec3(0.0f);
+	}
+};
+
+struct HitInfo
+{
+	bool didHit;
+	float dst;
+	vec3 hitPoint;
+	vec3 normal;
+	vec2 uv;
+	RayTracingMaterial material;
+
+	void Initialize() 
+	{
+        didHit = false;
+        dst = 0.0f;
+        hitPoint = vec3(0.0f);
+        normal = vec3(0.0f);
+        uv = vec2(0.0f);
+        material.Initialize();
+    }
+};
+
+// Note: Triangle order matters! Must go counter-clock wise
+// Calculate the intersection of a ray with a triangle using Möller–Trumbore algorithm
+// Thanks to https://stackoverflow.com/a/42752998
+HitInfo RayTriangle(Ray ray, Vertex vert1, Vertex vert2, Vertex vert3)
+{
+	vec3 edgeAB = vert2.pos.xyz - vert1.pos.xyz;
+	vec3 edgeAC = vert3.pos.xyz - vert1.pos.xyz;
+	vec3 normalVector = cross(edgeAB, edgeAC);
+	vec3 ao = ray.origin - vert1.pos.xyz;
+	vec3 dao = cross(ao, ray.direction);
+
+	float determinant = -dot(ray.direction, normalVector);
+	float invDet = 1.0f / determinant;
+	
+	// Calculate dst to triangle & barycentric coordinates of intersection point
+	float dst = dot(ao, normalVector) * invDet;
+	float u = dot(edgeAC, dao) * invDet;
+	float v = -dot(edgeAB, dao) * invDet;
+	float w = 1.0f - u - v;
+	
+	// Initialize hit info
+	HitInfo hitInfo;
+	hitInfo.didHit = determinant >= 1e-6 && dst >= 0.0f && u >= 0.0f && v >= 0.0f && w >= 0.0f;
+	hitInfo.hitPoint = ray.origin + ray.direction * dst;
+	hitInfo.normal = normalize(vert1.nor.xyz * w + vert2.nor.xyz * u + vert3.nor.xyz * v);
+	hitInfo.uv = vert1.uv.xy * w + vert2.uv.xy * u + vert3.uv.xy * v;
+	hitInfo.dst = dst;
+	return hitInfo;
+}
+
+HitInfo CalculateRayCollision(Ray ray)
+{
+	// Create closest HitInfo
+	HitInfo closestHit;
+	closestHit.Initialize();
+	closestHit.dst = 1.0f / 0.0f;
+
+	// Create Material
+	RayTracingMaterial material;
+	material.Initialize();
+
+	// Raycast against all meshes
+	for (uint i = 0; i < meshInstances.data.length(); i++)
+	{
+		uint verticesStartIndex = meshInstances.data[i].VerticesStartIndex;
+		uint verticesCount = meshInstances.data[i].VerticesCount;
+		uint indicesStartIndex = meshInstances.data[i].IndicesStartIndex;
+		uint indicesCount = meshInstances.data[i].IndicesCount;
+
+		for (uint j = indicesStartIndex; j < indicesStartIndex + indicesCount; j += 3)
+		{
+			uint a = indices.data[j + 0];
+			uint b = indices.data[j + 1];
+			uint c = indices.data[j + 2];
+
+			Vertex vert1 = vertices.data[verticesStartIndex + a];
+			Vertex vert2 = vertices.data[verticesStartIndex + b];
+			Vertex vert3 = vertices.data[verticesStartIndex + c];
+
+			HitInfo hitInfo = RayTriangle(ray, vert1, vert2, vert3);
+
+			if (hitInfo.didHit && hitInfo.dst < closestHit.dst)
+			{
+				closestHit = hitInfo;
+
+				// Diffuse and Normal Textures
+				sampler2D diffuseTexture = diffuseTextures.data[i];
+				sampler2D normalTexture = normalTextures.data[i];
+				material.color = texture(diffuseTexture, hitInfo.uv).rgb;
+				material.normal = texture(normalTexture, hitInfo.uv).rgb;
+
+				closestHit.material = material;
+			}
+		}
+	}
+
+	return closestHit;
+}
+
+// PCG (permuted congruential generator). Thanks to:
+// www.pcg-random.org and www.shadertoy.com/view/XlGcRh
+uint NextRandom(inout uint state)
+{
+	state = state * 747796405 + 2891336453;
+	uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+	result = (result >> 22) ^ result;
+	return result;
+}
+
+float RandomValue(inout uint state)
+{
+	return NextRandom(state) / 4294967295.0f; // 2^32 - 1
+}
+
+// Random value in normal distribution (with mean=0 and sd=1)
+float RandomValueNormalDistribution(inout uint state)
+{
+	// Thanks to https://stackoverflow.com/a/6178290
+	float theta = 2.0f * PI * RandomValue(state);
+	float rho = sqrt(-2.0f * log(RandomValue(state)));
+	return rho * cos(theta);
+}
+
+// Calculate a random direction
+vec3 RandomDirection(inout uint state)
+{
+	// Thanks to https://math.stackexchange.com/a/1585996
+	float x = RandomValueNormalDistribution(state);
+	float y = RandomValueNormalDistribution(state);
+	float z = RandomValueNormalDistribution(state);
+	return normalize(vec3(x, y, z));
+}
+
+vec3 GetEnvironmentLight(Ray ray)
+{
+	vec3 V = ray.direction;
+
+	mat2x2 rot = mat2x2(
+		environment.data.skyRotationCos, -environment.data.skyRotationSin,
+		environment.data.skyRotationSin, environment.data.skyRotationCos
+	);
+	V.xz = V.xz * rot;
+
+	vec2 uv = (vec2(-atan(V.z, V.x) / PI, -V.y) + 1.0f) * 0.5f;
+	return texture(environment.data.HDRI, uv).rgb;
+}
+
+vec3 Trace(Ray ray, inout uint rngState)
+{
+	vec3 incomingLight = vec3(0.0f);
+	vec3 rayColor = vec3(1.0f);
+
+	const uint MaxBounceCount = 1;
+	for (uint i = 0; i <= MaxBounceCount; i++)
+	{
+		HitInfo hitInfo = CalculateRayCollision(ray);
+		if (hitInfo.didHit)
+		{
+			ray.origin = hitInfo.hitPoint;
+			ray.direction = normalize(hitInfo.normal + RandomDirection(rngState));
+
+			RayTracingMaterial material = hitInfo.material;
+			rayColor *= material.color;
+
+			// Random early exit if ray colour is nearly 0 (can't contribute much to final result)
+			float p = max(rayColor.r, max(rayColor.g, rayColor.b));
+			if (RandomValue(rngState) >= p) 
+			{
+				break;
+			}
+			rayColor *= 1.0f / p;
+		}
+		else
+		{
+			incomingLight += GetEnvironmentLight(ray) * rayColor;
+			break;
+		}
+	}
+
+	return incomingLight;
+}
+
+void main()
+{
+	ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+	vec2 uv = (texelCoord + 0.5f) / FrameDimensions;
+
+	uint pixelIndex = texelCoord.y * uint(FrameDimensions.x) + texelCoord.x;
+	uint rngState = pixelIndex + FrameCount * 719393;
+
+	// Start from transformed position
+	vec4 viewPos = InvProjMatrix * vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
+	vec3 origin = viewPos.xyz / viewPos.w;
+	vec3 dir = normalize(origin); // Normalize to get view direction
+
+	// Ray
+	Ray ray;
+	ray.Initialize();
+	ray.origin = (inverse(ViewMatrix) * vec4(origin, 1)).xyz;
+	ray.direction = (inverse(ViewMatrix) * vec4(dir, 0)).xyz;
+
+	// RayTrace 
+	vec3 totalIncomingLight = vec3(0.0f);
+	const uint NumRaysPerPixel = 1;
+	for (uint rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
+	{
+		totalIncomingLight += Trace(ray, rngState);
+	}
+	vec3 result = totalIncomingLight / float(NumRaysPerPixel);
+
+	vec3 currentColor = result;
+	vec3 previousColor = texelFetch(PreviousPathTracingTexture, texelCoord, 0).rgb;
+	
+	// Combine prev frame with current frame. Weight the contributions to result in an average over all frames.
+	float weight = 1.0f / FrameCount;
+	vec3 accumulatedColor = clamp(previousColor * (1 - weight) + currentColor * weight, 0.0f, 1.0f);
+	
+	// Value
+	vec4 value = vec4(accumulatedColor, 1.0f);
+
+	imageStore(imgOutput, texelCoord, value);
+}

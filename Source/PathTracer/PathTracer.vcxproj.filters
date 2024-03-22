@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="Main.cpp" />
+    <ClCompile Include="PathTracingApplication.cpp" />
+    <ClCompile Include="PathTracingRenderPass.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="PathTracingApplication.h" />
+    <ClInclude Include="PathTracingRenderPass.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders\pathtracing.comp" />
+    <None Include="Shaders\version430.glsl" />
+    <None Include="Shaders\Renderer\copy.frag" />
+    <None Include="Shaders\Renderer\fullscreen.vert" />
+    <None Include="Shaders\blinn-phong.frag" />
+    <None Include="Shaders\blinn-phong.vert" />
+  </ItemGroup>
+</Project>
