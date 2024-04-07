@@ -202,10 +202,10 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/bunny.obj"));
     //m_models.push_back(loader.Load("Content/Models/plane.obj"));
     //m_models.push_back(loader.Load("Content/Models/icosphere.obj"));
-    m_models.push_back(loader.Load("Content/Models/teapot.obj"));
+    //m_models.push_back(loader.Load("Content/Models/teapot.obj"));
     //m_models.push_back(loader.Load("Content/Models/SportsCar/SportsCar.obj"));
     //m_models.push_back(loader.Load("Content/Models/SponzaDabrovic/SponzaDabrovic.obj"));
-    //m_models.push_back(loader.Load("Content/Models/SponzaCrytek/SponzaCrytek.obj"));
+    m_models.push_back(loader.Load("Content/Models/SponzaCrytek/SponzaCrytek.obj"));
 }
 
 void PathTracingApplication::InitializeCamera()
