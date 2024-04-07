@@ -69,21 +69,23 @@ private:
     GLuint64 m_HDRIHandle;
 
     // SSBOs
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboMeshInstances;
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboVertices;
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboIndices;
+    //std::shared_ptr<ShaderStorageBufferObject> m_ssboMeshInstances;
+    //std::shared_ptr<ShaderStorageBufferObject> m_ssboVertices;
+    //std::shared_ptr<ShaderStorageBufferObject> m_ssboIndices;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboDiffuseTextures;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboNormalTextures;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboEnvironment;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHNodes;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHPrimitives;
 
 private:
-    struct MeshInstanceAlign
-    {
-        unsigned int VerticesStartIndex;
-        unsigned int VerticesCount;
-        unsigned int IndicesStartIndex;
-        unsigned int IndicesCount;
-    };
+    //struct MeshInstanceAlign
+    //{
+    //    unsigned int VerticesStartIndex;
+    //    unsigned int VerticesCount;
+    //    unsigned int IndicesStartIndex;
+    //    unsigned int IndicesCount;
+    //};
 
     // What VBO is made out of, based on allowed semantics
     struct Vertex
@@ -93,12 +95,12 @@ private:
         glm::vec2 uv;
     };
 
-    struct VertexAlign
-    {
-        glm::vec3 pos; float _padding1;
-        glm::vec3 nor; float _padding2;
-        glm::vec2 uv;  glm::vec2 _padding3;
-    };
+    //struct VertexAlign
+    //{
+    //    glm::vec3 pos; float _padding1;
+    //    glm::vec3 nor; float _padding2;
+    //    glm::vec2 uv;  glm::vec2 _padding3;
+    //};
 
     struct EnvironmentAlign
     {

@@ -113,7 +113,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)Source\Runtime;$(SolutionDir)ThirdParty\oidn\include;$(SolutionDir)ThirdParty\stb\include;$(SolutionDir)ThirdParty\imgui\include;$(SolutionDir)ThirdParty\glm\include;$(SolutionDir)ThirdParty\glfw\include;$(SolutionDir)ThirdParty\glad\include;$(SolutionDir)ThirdParty\assimp\include;$(SolutionDir)ThirdParty\assimp;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)Source\Runtime;$(SolutionDir)ThirdParty\oidn\include;$(SolutionDir)ThirdParty\stb\include;$(SolutionDir)ThirdParty\imgui\include;$(SolutionDir)ThirdParty\glm\include;$(SolutionDir)ThirdParty\glfw\include;$(SolutionDir)ThirdParty\glad\include;$(SolutionDir)ThirdParty\assimp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -144,7 +144,7 @@ xcopy /s /d "$(ProjectDir)Content" "$(OutDir)Content\"</Command>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)Source\Runtime;$(SolutionDir)ThirdParty\oidn\include;$(SolutionDir)ThirdParty\stb\include;$(SolutionDir)ThirdParty\imgui\include;$(SolutionDir)ThirdParty\glm\include;$(SolutionDir)ThirdParty\glfw\include;$(SolutionDir)ThirdParty\glad\include;$(SolutionDir)ThirdParty\assimp\include;$(SolutionDir)ThirdParty\assimp;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)Source\Runtime;$(SolutionDir)ThirdParty\oidn\include;$(SolutionDir)ThirdParty\stb\include;$(SolutionDir)ThirdParty\imgui\include;$(SolutionDir)ThirdParty\glm\include;$(SolutionDir)ThirdParty\glfw\include;$(SolutionDir)ThirdParty\glad\include;$(SolutionDir)ThirdParty\assimp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -173,11 +173,13 @@ xcopy /s /d "$(ProjectDir)Content" "$(OutDir)Content\"</Command>
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BVH.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="PathTracingRenderPass.cpp" />
     <ClCompile Include="PathTracingApplication.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BVH.h" />
     <ClInclude Include="PathTracingRenderPass.h" />
     <ClInclude Include="PathTracingApplication.h" />
   </ItemGroup>

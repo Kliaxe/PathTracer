@@ -10,6 +10,11 @@ layout(rgba32f, binding = 0) uniform image2D imgOutput;
 // --------------------------------------------------------
 
 const float PI = 3.1415926f;
+const float FLT_MAX = 3.402823466e+38f;
+
+// --------------------------------------------------------
+
+#define BVH_STACKSIZE 16
 
 // --------------------------------------------------------
 
@@ -46,20 +51,47 @@ struct Environment
     float skyRotationSin;
 };
 
-layout(std430, binding = 0) readonly buffer MeshInstancesBuffer
+struct BVHNode
 {
-    MeshInstance data[];
-} meshInstances;
+	int left;           // Left subtree
+    int right;          // Right subtree
+    int n;              // Number of primitives
+    int index;          // Primitive index
+    vec3 AA; float padding1;
+	vec3 BB; float padding2;
+};
 
-layout(std430, binding = 1) readonly buffer VerticesBuffer
+struct BVHPrimitive
 {
-    Vertex data[];
-} vertices;
+	vec4 posAuvX;
+	vec4 norAuvY;
 
-layout(std430, binding = 2) readonly buffer IndicesBuffer
-{
-    uint data[];
-} indices;
+	vec4 posBuvX;
+	vec4 norBuvY;
+
+	vec4 posCuvX;
+	vec4 norCuvY;
+
+//	uint verticesStartIndex;
+//	uint indicesStartIndex;
+};
+
+// --------------------------------------------------------
+
+//layout(std430, binding = 0) readonly buffer MeshInstancesBuffer
+//{
+//    MeshInstance data[];
+//} meshInstances;
+
+//layout(std430, binding = 1) readonly buffer VerticesBuffer
+//{
+//    Vertex data[];
+//} vertices;
+//
+//layout(std430, binding = 2) readonly buffer IndicesBuffer
+//{
+//    uint data[];
+//} indices;
 
 layout(std430, binding = 3) readonly buffer DiffuseTexturesBuffer
 {
@@ -75,6 +107,16 @@ layout(std430, binding = 5) readonly buffer EnvironmentBuffer
 {
     Environment data;
 } environment;
+
+layout(std430, binding = 6) readonly buffer BVHNodeBuffer
+{
+    BVHNode data[];
+} BVHNodes;
+
+layout(std430, binding = 7) readonly buffer BVHPrimitiveBuffer
+{
+    BVHPrimitive data[];
+} BVHPrimitives;
 
 // --------------------------------------------------------
 
@@ -125,12 +167,12 @@ struct HitInfo
 // Note: Triangle order matters! Must go counter-clock wise
 // Calculate the intersection of a ray with a triangle using Möller–Trumbore algorithm
 // Thanks to https://stackoverflow.com/a/42752998
-HitInfo RayTriangle(Ray ray, Vertex vert1, Vertex vert2, Vertex vert3)
+HitInfo RayTriangle(Ray ray, Vertex vertexA, Vertex vertexB, Vertex vertexC)
 {
-	vec3 edgeAB = vert2.pos.xyz - vert1.pos.xyz;
-	vec3 edgeAC = vert3.pos.xyz - vert1.pos.xyz;
+	vec3 edgeAB = vertexB.pos.xyz - vertexA.pos.xyz;
+	vec3 edgeAC = vertexC.pos.xyz - vertexA.pos.xyz;
 	vec3 normalVector = cross(edgeAB, edgeAC);
-	vec3 ao = ray.origin - vert1.pos.xyz;
+	vec3 ao = ray.origin - vertexA.pos.xyz;
 	vec3 dao = cross(ao, ray.direction);
 
 	float determinant = -dot(ray.direction, normalVector);
@@ -146,59 +188,302 @@ HitInfo RayTriangle(Ray ray, Vertex vert1, Vertex vert2, Vertex vert3)
 	HitInfo hitInfo;
 	hitInfo.didHit = determinant >= 1e-6 && dst >= 0.0f && u >= 0.0f && v >= 0.0f && w >= 0.0f;
 	hitInfo.hitPoint = ray.origin + ray.direction * dst;
-	hitInfo.normal = normalize(vert1.nor.xyz * w + vert2.nor.xyz * u + vert3.nor.xyz * v);
-	hitInfo.uv = vert1.uv.xy * w + vert2.uv.xy * u + vert3.uv.xy * v;
+	hitInfo.normal = normalize(vertexA.nor.xyz * w + vertexB.nor.xyz * u + vertexC.nor.xyz * v);
+	hitInfo.uv = vertexA.uv.xy * w + vertexB.uv.xy * u + vertexC.uv.xy * v;
 	hitInfo.dst = dst;
 	return hitInfo;
 }
 
-HitInfo CalculateRayCollision(Ray ray)
+// Note: Triangle order matters! Must go counter-clock wise
+// Calculate the intersection of a ray with a triangle using Möller–Trumbore algorithm
+// Based on: https://stackoverflow.com/a/42752998
+HitInfo RayTriangleTest(Ray ray, BVHPrimitive primitive)
 {
-	// Create closest HitInfo
+	vec3 edgeAB = primitive.posBuvX.xyz - primitive.posAuvX.xyz;
+	vec3 edgeAC = primitive.posCuvX.xyz - primitive.posAuvX.xyz;
+	vec3 normalVector = cross(edgeAB, edgeAC);
+	vec3 ao = ray.origin - primitive.posAuvX.xyz;
+	vec3 dao = cross(ao, ray.direction);
+
+	float determinant = -dot(ray.direction, normalVector);
+	float invDet = 1.0f / determinant;
+	
+	// Calculate dst to triangle & barycentric coordinates of intersection point
+	float dst = dot(ao, normalVector) * invDet;
+	float u = dot(edgeAC, dao) * invDet;
+	float v = -dot(edgeAB, dao) * invDet;
+	float w = 1.0f - u - v;
+	
+	// Initialize hit info
+	HitInfo hitInfo;
+	hitInfo.didHit = determinant >= 1e-10 && dst >= 0.0f && u >= 0.0f && v >= 0.0f && w >= 0.0f;
+	hitInfo.hitPoint = ray.origin + ray.direction * dst;
+	hitInfo.normal = normalize(primitive.norAuvY.xyz * w + primitive.norBuvY.xyz * u + primitive.norCuvY.xyz * v);
+	hitInfo.uv = vec2(primitive.posAuvX.w, primitive.norAuvY.w) * w + vec2(primitive.posBuvX.w, primitive.norBuvY.w) * u + vec2(primitive.posCuvX.w, primitive.norCuvY.w);
+	hitInfo.dst = dst;
+	return hitInfo;
+}
+
+// Return distance between ray and AABB box
+float HitAABB(Ray r, vec3 AA, vec3 BB) 
+{
+    vec3 invdir = 1.0 / r.direction;
+
+    vec3 f = (BB - r.origin) * invdir;
+    vec3 n = (AA - r.origin) * invdir;
+
+    vec3 tmax = max(f, n);
+    vec3 tmin = min(f, n);
+
+    float t1 = min(tmax.x, min(tmax.y, tmax.z));
+    float t0 = max(tmin.x, max(tmin.y, tmin.z));
+
+    return (t1 >= t0) ? ((t0 > 0.0) ? (t0) : (t1)) : (-1);
+}
+
+BVHPrimitive GetBVHPrimitive(int index)
+{
+	BVHPrimitive primitive = BVHPrimitives.data[index];
+	return primitive;
+}
+
+HitInfo HitArray(Ray ray, int L, int R)
+{
 	HitInfo closestHit;
 	closestHit.Initialize();
-	closestHit.dst = 1.0f / 0.0f;
+	closestHit.dst = FLT_MAX;
 
 	// Create Material
 	RayTracingMaterial material;
 	material.Initialize();
 
-	// Raycast against all meshes
-	for (uint i = 0; i < meshInstances.data.length(); i++)
+	for (int i = L; i <= R; i++)
 	{
-		uint verticesStartIndex = meshInstances.data[i].VerticesStartIndex;
-		uint verticesCount = meshInstances.data[i].VerticesCount;
-		uint indicesStartIndex = meshInstances.data[i].IndicesStartIndex;
-		uint indicesCount = meshInstances.data[i].IndicesCount;
+		BVHPrimitive primitive = GetBVHPrimitive(i);
 
-		for (uint j = indicesStartIndex; j < indicesStartIndex + indicesCount; j += 3)
+//		uint a = primitive.indicesStartIndex + 0;
+//		uint b = primitive.indicesStartIndex + 1;
+//		uint c = primitive.indicesStartIndex + 2;
+//
+//		uint indexA = indices.data[a];
+//		uint indexB = indices.data[b];
+//		uint indexC = indices.data[c];
+//
+//		Vertex vertexA = vertices.data[primitive.verticesStartIndex + indexA];
+//		Vertex vertexB = vertices.data[primitive.verticesStartIndex + indexB];
+//		Vertex vertexC = vertices.data[primitive.verticesStartIndex + indexC];
+//
+//		HitInfo hitInfo = RayTriangle(ray, vertexA, vertexB, vertexC);
+
+		HitInfo hitInfo = RayTriangleTest(ray, primitive);
+
+		if (hitInfo.didHit && hitInfo.dst < closestHit.dst)
 		{
-			uint a = indices.data[j + 0];
-			uint b = indices.data[j + 1];
-			uint c = indices.data[j + 2];
+			closestHit = hitInfo;
 
-			Vertex vert1 = vertices.data[verticesStartIndex + a];
-			Vertex vert2 = vertices.data[verticesStartIndex + b];
-			Vertex vert3 = vertices.data[verticesStartIndex + c];
+			// TODO: We shouldn't sample textures here?
+			// Diffuse and Normal Textures
+			//sampler2D diffuseTexture = diffuseTextures.data[primitive.meshIndex];
+			//sampler2D normalTexture = normalTextures.data[primitive.meshIndex];
+			//material.color = texture(diffuseTexture, hitInfo.uv).rgb;
+			//material.normal = texture(normalTexture, hitInfo.uv).rgb;
 
-			HitInfo hitInfo = RayTriangle(ray, vert1, vert2, vert3);
+			material.color = vec3(1.0f, 1.0f, 1.0f);
 
+			closestHit.material = material;
+		}
+	}
+
+	return closestHit;
+}
+
+BVHNode GetBVHNode(int index)
+{
+	BVHNode node = BVHNodes.data[index];
+	return node;
+}
+
+HitInfo HitBVH(Ray ray)
+{
+	HitInfo closestHit;
+	closestHit.Initialize();
+	closestHit.dst = FLT_MAX;
+
+	// Stack
+	int stack[BVH_STACKSIZE];
+	int stackPointer = 0;
+
+	stack[stackPointer++] = 1;
+	while(stackPointer > 0)
+	{
+		int top = stack[--stackPointer];
+		BVHNode node = GetBVHNode(top);
+
+		// If node is leaf, traverse primitives and find intersection
+		if (node.n > 0)
+		{
+			int L = node.index;
+			int R = node.index + node.n - 1;
+
+			// Go through all primitives inside of BVH node range
+			HitInfo hitInfo = HitArray(ray, L, R);
+			
+			// Out of the other nodes, did this one perform better?
 			if (hitInfo.didHit && hitInfo.dst < closestHit.dst)
 			{
 				closestHit = hitInfo;
+			}
+		}
+		else
+		{
+			if (stackPointer < BVH_STACKSIZE)
+			{
+				// Find intersection with left and right boxes AABB
+				float dstLeft = FLT_MAX;
+				float dstRight = FLT_MAX;
 
-				// Diffuse and Normal Textures
-				sampler2D diffuseTexture = diffuseTextures.data[i];
-				sampler2D normalTexture = normalTextures.data[i];
-				material.color = texture(diffuseTexture, hitInfo.uv).rgb;
-				material.normal = texture(normalTexture, hitInfo.uv).rgb;
+				if (node.left > 0.0f)
+				{
+					BVHNode leftNode = GetBVHNode(node.left);
+					dstLeft = HitAABB(ray, leftNode.AA, leftNode.BB);
+				}
 
-				closestHit.material = material;
+				if (node.right > 0.0f)
+				{
+					BVHNode rightNode = GetBVHNode(node.right);
+					dstRight = HitAABB(ray, rightNode.AA, rightNode.BB);
+				}
+
+				// Search in recent boxes
+				if (dstLeft > 0.0f && dstRight > 0.0f)
+				{
+					if (dstLeft < dstRight)
+					{
+						// Left first
+						stack[stackPointer++] = node.right;
+						stack[stackPointer++] = node.left;
+					}
+					else
+					{
+						// Right first
+						stack[stackPointer++] = node.left;
+						stack[stackPointer++] = node.right;
+					}
+				}
+				else if (dstLeft > 0.0f)
+				{
+					stack[stackPointer++] = node.left;
+				}
+				else if (dstRight > 0.0f)
+				{
+					stack[stackPointer++] = node.right;
+				}
+			}
+			else
+			{
+				break;
 			}
 		}
 	}
 
 	return closestHit;
+}
+
+vec3 HitBVHDebug(Ray ray)
+{
+	uint hitCounter = 0;
+
+	// Stack
+	int stack[BVH_STACKSIZE];
+	int stackPointer = 0;
+
+	stack[stackPointer++] = 1;
+	while(stackPointer > 0)
+	{
+		int top = stack[--stackPointer];
+		BVHNode node = GetBVHNode(top);
+
+		// If node is leaf, traverse primitives and find intersection
+		if (node.n > 0)
+		{
+			hitCounter++;
+		}
+		else
+		{
+			if (stackPointer < BVH_STACKSIZE)
+			{
+				// Find intersection with left and right boxes AABB
+				float dstLeft = FLT_MAX;
+				float dstRight = FLT_MAX;
+
+				if (node.left > 0.0f)
+				{
+					BVHNode leftNode = GetBVHNode(node.left);
+					dstLeft = HitAABB(ray, leftNode.AA, leftNode.BB);
+				}
+
+				if (node.right > 0.0f)
+				{
+					BVHNode rightNode = GetBVHNode(node.right);
+					dstRight = HitAABB(ray, rightNode.AA, rightNode.BB);
+				}
+
+				// Search in recent boxes
+				if (dstLeft > 0.0f && dstRight > 0.0f)
+				{
+					if (dstLeft < dstRight)
+					{
+						// Left first
+						stack[stackPointer++] = node.right;
+						stack[stackPointer++] = node.left;
+					}
+					else
+					{
+						// Right first
+						stack[stackPointer++] = node.left;
+						stack[stackPointer++] = node.right;
+					}
+				}
+				else if (dstLeft > 0.0f)
+				{
+					stack[stackPointer++] = node.left;
+				}
+				else if (dstRight > 0.0f)
+				{
+					stack[stackPointer++] = node.right;
+				}
+			}
+			else
+			{
+				hitCounter = 0xFFFFFFFF;
+				break;
+			}
+		}
+	}
+
+	if (hitCounter == 0xFFFFFFFF)
+	{
+		return vec3(1.0f, 0.0f, 1.0f); // error: stack overflow (purple)
+	}
+
+	// Heat map
+	const vec3 mapTex[] = {
+		vec3(0.0f, 0.0f, 0.0f),
+		vec3(0.0f, 0.0f, 1.0f),
+		vec3(0.0f, 1.0f, 1.0f),
+		vec3(0.0f, 1.0f, 0.0f),
+		vec3(1.0f, 1.0f, 0.0f),
+		vec3(1.0f, 0.0f, 0.0f),
+	};
+
+	const float mapTexLen = 5.0f;
+	const float maxHeat = 100.0f;
+	float l = clamp(float(hitCounter) / maxHeat, 0.0f, 1.0f) * mapTexLen;
+	vec3 a = mapTex[uint(floor(l))];
+	vec3 b = mapTex[uint(ceil(l))];
+	vec3 heatmap = mix(a, b, l - floor(l));
+
+	return heatmap;
 }
 
 // PCG (permuted congruential generator). Thanks to:
@@ -257,7 +542,7 @@ vec3 Trace(Ray ray, inout uint rngState)
 	const uint MaxBounceCount = 1;
 	for (uint i = 0; i <= MaxBounceCount; i++)
 	{
-		HitInfo hitInfo = CalculateRayCollision(ray);
+		HitInfo hitInfo = HitBVH(ray);
 		if (hitInfo.didHit)
 		{
 			ray.origin = hitInfo.hitPoint;
@@ -303,6 +588,15 @@ void main()
 	ray.origin = (inverse(ViewMatrix) * vec4(origin, 1)).xyz;
 	ray.direction = (inverse(ViewMatrix) * vec4(dir, 0)).xyz;
 
+	// Debug BVH
+#if 0
+	vec3 debug = HitBVHDebug(ray);
+	vec4 debugValue = vec4(debug, 1.0f);
+
+	imageStore(imgOutput, texelCoord, debugValue);
+	return;
+#endif
+
 	// RayTrace 
 	vec3 totalIncomingLight = vec3(0.0f);
 	const uint NumRaysPerPixel = 1;
@@ -321,6 +615,11 @@ void main()
 	
 	// Value
 	vec4 value = vec4(accumulatedColor, 1.0f);
+
+//	HitInfo hitInfo = HitBVH(ray);
+//	vec4 value = vec4(hitInfo.didHit);
+//	HitInfo hitInfo = HitArray(ray, 0, BVHPrimitives.data.length() - 1);
+//	vec4 value = vec4(hitInfo.didHit);
 
 	imageStore(imgOutput, texelCoord, value);
 }

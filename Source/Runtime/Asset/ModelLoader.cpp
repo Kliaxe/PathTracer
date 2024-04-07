@@ -82,8 +82,6 @@ bool ModelLoader::SetMaterialProperty(MaterialProperty materialProperty, const c
 
 Model ModelLoader::Load(const char* path)
 {
-    Model model;
-
     // Read the file using Assimp importer
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile(path,
@@ -95,6 +93,8 @@ Model ModelLoader::Load(const char* path)
     // If the file was loaded, load all the meshes as submeshes
     if (scene)
     {
+        Model model;
+
         model.SetMesh(std::make_shared<Mesh>());
         Mesh& mesh = model.GetMesh();
         for (unsigned int meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
@@ -111,9 +111,13 @@ Model ModelLoader::Load(const char* path)
 
             model.AddMaterial(material);
         }
-    }
 
-    return model;
+        return model;
+    }
+    else
+    {
+        throw new std::runtime_error("Scene defined by file loading was not valid...");
+    }
 }
 
 void ModelLoader::GenerateSubmesh(Mesh& mesh, const aiMesh& meshData)
@@ -220,36 +224,70 @@ std::vector<GLubyte> ModelLoader::CollectVertexData(const aiMesh& meshData, Vert
 
     // Buid the vertex format with the available vertex data
 
-    assert(meshData.HasPositions());
     if (allowedSemantics.contains(VertexAttribute::Semantic::Position))
     {
-        vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Position);
+        if (meshData.HasPositions())
+        {
+            vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Position);
+        }
+        else
+        {
+            throw std::runtime_error("You've requested Position semantic, but this mesh doesn't contain any...");
+        }
     }
-    if (meshData.HasNormals() && 
-        allowedSemantics.contains(VertexAttribute::Semantic::Normal))
+    if (allowedSemantics.contains(VertexAttribute::Semantic::Normal))
     {
-        vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Normal);
+        if (meshData.HasNormals())
+        {
+            vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Normal);
+        }
+        else
+        {
+            throw std::runtime_error("You've requested Normal semantic, but this mesh doesn't contain any...");
+        }
     }
-    if (meshData.HasTangentsAndBitangents() && 
-        (allowedSemantics.contains(VertexAttribute::Semantic::Tangent) && allowedSemantics.contains(VertexAttribute::Semantic::Bitangent)))
+    if (allowedSemantics.contains(VertexAttribute::Semantic::Tangent) && allowedSemantics.contains(VertexAttribute::Semantic::Bitangent))
     {
-        vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Tangent);
-        vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Bitangent);
+        if (meshData.HasTangentsAndBitangents())
+        {
+            vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Tangent);
+            vertexFormat.AddVertexAttribute<float>(3, VertexAttribute::Semantic::Bitangent);
+        }
+        else
+        {
+            throw std::runtime_error("You've requested Tangent and Bitangent semantic, but this mesh doesn't contain any...");
+        }
     }
     if (allowedSemantics.contains(VertexAttribute::Semantic::Color0)) // TODO: We should check all available colors
     {
-        unsigned int colorSemantic = static_cast<unsigned int>(VertexAttribute::Semantic::Color0);
-        for (unsigned int colorChannel = 0; colorChannel < meshData.GetNumColorChannels(); ++colorChannel)
+        // If we requested the following semantic, but the mesh doesn't have it, don't continue
+        if (meshData.GetNumColorChannels() > 0)
         {
-            vertexFormat.AddVertexAttribute<GLubyte>(4, true, static_cast<VertexAttribute::Semantic>(colorSemantic + colorChannel));
+            unsigned int colorSemantic = static_cast<unsigned int>(VertexAttribute::Semantic::Color0);
+            for (unsigned int colorChannel = 0; colorChannel < meshData.GetNumColorChannels(); ++colorChannel)
+            {
+                vertexFormat.AddVertexAttribute<GLubyte>(4, true, static_cast<VertexAttribute::Semantic>(colorSemantic + colorChannel));
+            }
+        }
+        else
+        {
+            throw std::runtime_error("You've requested ColorChannel semantic, but this mesh doesn't contain any...");
         }
     }
     if (allowedSemantics.contains(VertexAttribute::Semantic::TexCoord0)) // TODO: We should check all available UVs 
     {
-        unsigned int uvSemantic = static_cast<unsigned int>(VertexAttribute::Semantic::TexCoord0);
-        for (unsigned int uvChannel = 0; uvChannel < meshData.GetNumUVChannels(); ++uvChannel)
+        // If we requested the following semantic, but the mesh doesn't have it, don't continue
+        if (meshData.GetNumUVChannels() > 0)
         {
-            vertexFormat.AddVertexAttribute<float>(meshData.mNumUVComponents[uvChannel], static_cast<VertexAttribute::Semantic>(uvSemantic + uvChannel));
+            unsigned int uvSemantic = static_cast<unsigned int>(VertexAttribute::Semantic::TexCoord0);
+            for (unsigned int uvChannel = 0; uvChannel < meshData.GetNumUVChannels(); ++uvChannel)
+            {
+                vertexFormat.AddVertexAttribute<float>(meshData.mNumUVComponents[uvChannel], static_cast<VertexAttribute::Semantic>(uvSemantic + uvChannel));
+            }
+        }
+        else
+        {
+            throw std::runtime_error("You've requested TexCoord semantic, but this mesh doesn't contain any...");
         }
     }
 

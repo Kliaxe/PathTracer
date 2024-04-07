@@ -65,7 +65,7 @@ void CameraController::UpdateTranslation(const Window& window, float deltaTime)
 
     // Double speed if SHIFT is pressed
     if (window.IsKeyPressed(GLFW_KEY_LEFT_SHIFT))
-        inputTranslation *= 2.0f;
+        inputTranslation *= 5.0f;
 
     glm::vec3 right, up, forward;
     m_camera->GetCamera()->ExtractVectors(right, up, forward);

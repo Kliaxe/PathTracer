@@ -26,7 +26,7 @@ PathTracingApplication::PathTracingApplication()
     : Application(1024, 1024, "PathTracer")
     , m_frameCount(0)
     , m_maxFrameCount(25)
-    , m_shouldRasterizeAsPreview(true)
+    , m_shouldRasterizeAsPreview(false)
     , m_shouldPathTrace(false)
     , m_shouldDenoise(false)
     , m_denoised(false)
@@ -196,16 +196,26 @@ void PathTracingApplication::InitializeModel()
 
     // Load models
     //m_models.push_back(loader.Load("Content/Models/BrickCubesObj/BrickCubes.obj"));
-    m_models.push_back(loader.Load("Content/Models/Mill/Mill.obj"));
+    //m_models.push_back(loader.Load("Content/Models/Mill/Mill.obj"));
+    //m_models.push_back(loader.Load("Content/Models/lucy.obj"));
+    //m_models.push_back(loader.Load("Content/Models/dragon.obj"));
+    //m_models.push_back(loader.Load("Content/Models/bunny.obj"));
+    //m_models.push_back(loader.Load("Content/Models/plane.obj"));
+    //m_models.push_back(loader.Load("Content/Models/icosphere.obj"));
+    m_models.push_back(loader.Load("Content/Models/teapot.obj"));
+    //m_models.push_back(loader.Load("Content/Models/SportsCar/SportsCar.obj"));
+    //m_models.push_back(loader.Load("Content/Models/SponzaDabrovic/SponzaDabrovic.obj"));
+    //m_models.push_back(loader.Load("Content/Models/SponzaCrytek/SponzaCrytek.obj"));
 }
 
 void PathTracingApplication::InitializeCamera()
 {
     // Create the main camera
     std::shared_ptr<Camera> camera = std::make_shared<Camera>();
-    camera->SetViewMatrix(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0));
+    //camera->SetViewMatrix(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0));
+    camera->SetViewMatrix(glm::vec3(-8.0f, 5.0f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0));
     float fov = 1.57f;
-    camera->SetPerspectiveProjectionMatrix(fov, GetMainWindow().GetAspectRatio(), 0.1f, 1000.0f);
+    camera->SetPerspectiveProjectionMatrix(fov, GetMainWindow().GetAspectRatio(), 0.01f, 1000.0f);
 
     // Create a scene node for the camera
     std::shared_ptr<SceneCamera> sceneCamera = std::make_shared<SceneCamera>("camera", camera);
@@ -318,6 +328,9 @@ void PathTracingApplication::RenderGUI()
 
     if (auto window = m_imGui.UseWindow("Frame Data"))
     {
+        float milliSeconds = GetDeltaTime() * 1000.0f;
+        ImGui::Text(std::string("Frame Render Time (ms): " + std::to_string(milliSeconds)).c_str());
+
         ImGui::Text(std::string("Frame Count: " + std::to_string(m_frameCount)).c_str());
         
         ImGui::Spacing();

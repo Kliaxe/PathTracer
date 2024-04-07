@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2019, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -92,22 +92,19 @@ struct aiTexel {
 
 #ifdef __cplusplus
     //! Comparison operator
-    bool operator== (const aiTexel& other) const
-    {
+    bool operator== (const aiTexel& other) const {
         return b == other.b && r == other.r &&
                g == other.g && a == other.a;
     }
 
     //! Inverse comparison operator
-    bool operator!= (const aiTexel& other) const
-    {
+    bool operator!= (const aiTexel& other) const {
         return b != other.b || r != other.r ||
                g != other.g || a != other.a;
     }
 
     //! Conversion to a floating-point 4d color
-    operator aiColor4D() const
-    {
+    operator aiColor4D() const {
         return aiColor4D(r/255.f,g/255.f,b/255.f,a/255.f);
     }
 #endif // __cplusplus
@@ -202,13 +199,12 @@ struct aiTexture {
     }
 
     // Construction
-    aiTexture() AI_NO_EXCEPT
-    : mWidth(0)
-    , mHeight(0)
-    , pcData(nullptr)
-    , mFilename() {
-        achFormatHint[0] = achFormatHint[1] = 0;
-        achFormatHint[2] = achFormatHint[3] = 0;
+    aiTexture() AI_NO_EXCEPT :
+            mWidth(0),
+            mHeight(0),
+            pcData(nullptr),
+            mFilename() {
+        memset(achFormatHint, 0, sizeof(achFormatHint));
     }
 
     // Destruction

@@ -13,6 +13,7 @@
 #include <iostream>
 #include <numeric>
 #include <span>
+#include "BVH.h"
 
 //#define DEBUG_VBO
 //#define DEBUG_EBO
@@ -52,11 +53,13 @@ void PathTracingRenderPass::Render()
         glMakeTextureHandleResidentARB(m_HDRIHandle);
         
         // Bind SSBO buffers
-        m_ssboMeshInstances->Bind();
-        m_ssboVertices->Bind();
-        m_ssboIndices->Bind();
+        //m_ssboMeshInstances->Bind();
+        //m_ssboVertices->Bind();
+        //m_ssboIndices->Bind();
         m_ssboDiffuseTextures->Bind();
         m_ssboNormalTextures->Bind();
+        m_ssboBVHNodes->Bind();
+        m_ssboBVHPrimitives->Bind();
 
         // Bind material and set uniforms
         m_pathTracingMaterial->Use();
@@ -187,7 +190,7 @@ void PathTracingRenderPass::InitializeTextures()
 void PathTracingRenderPass::InitializeBuffers()
 {
     // VBO and EBO data of all models
-    std::vector<std::vector<VertexAlign>> totalVertexData;
+    std::vector<std::vector<Vertex>> totalVertexData;
     std::vector<std::vector<unsigned int>> totalIndexData;
 
     // Go through each model from application
@@ -218,13 +221,13 @@ void PathTracingRenderPass::InitializeBuffers()
                 glGetBufferSubData(GL_ARRAY_BUFFER, 0, vboSize, vboData.data());
 
                 // Convert GLubyte data to Vertex data
-                std::vector<VertexAlign> vertexData(vboSize / sizeof(Vertex));
+                std::vector<Vertex> vertexData(vboSize / sizeof(Vertex));
                 const GLubyte* currentPtr = vboData.data();
 
                 // Map vboData to vertexData of type 'Vertex'
                 for (size_t j = 0; j < vboSize / sizeof(Vertex); j++)
                 {
-                    VertexAlign vertex { };
+                    Vertex vertex { };
 
                     // Copy position data (assuming it's tightly packed)
                     memcpy(&vertex.pos, currentPtr, sizeof(glm::vec3));
@@ -337,70 +340,70 @@ void PathTracingRenderPass::InitializeBuffers()
         }
     }
 
-    // MeshInstance allocation
-    {
-        // Create SSBO for mesh instances
-        m_ssboMeshInstances = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboMeshInstances->Bind();
-        glBindBufferBase(m_ssboMeshInstances->GetTarget(), 0, m_ssboMeshInstances->GetHandle()); // Binding index: 0
+    //// MeshInstance allocation
+    //{
+    //    // Create SSBO for mesh instances
+    //    m_ssboMeshInstances = std::make_shared<ShaderStorageBufferObject>();
+    //    m_ssboMeshInstances->Bind();
+    //    glBindBufferBase(m_ssboMeshInstances->GetTarget(), 0, m_ssboMeshInstances->GetHandle()); // Binding index: 0
 
-        std::vector<MeshInstanceAlign> meshInstances;
+    //    std::vector<MeshInstanceAlign> meshInstances;
 
-        // Iterate over each mesh instance
-        for (size_t i = 0; i < totalVertexData.size(); ++i)
-        {
-            MeshInstanceAlign meshInstance{ };
+    //    // Iterate over each mesh instance
+    //    for (size_t i = 0; i < totalVertexData.size(); ++i)
+    //    {
+    //        MeshInstanceAlign meshInstance{ };
 
-            // Calculate vertices start index and count
-            meshInstance.VerticesStartIndex = i > 0 ? meshInstances[i - 1].VerticesStartIndex + meshInstances[i - 1].VerticesCount : 0;
-            meshInstance.VerticesCount = static_cast<unsigned int>(totalVertexData[i].size());
+    //        // Calculate vertices start index and count
+    //        meshInstance.VerticesStartIndex = i > 0 ? meshInstances[i - 1].VerticesStartIndex + meshInstances[i - 1].VerticesCount : 0;
+    //        meshInstance.VerticesCount = static_cast<unsigned int>(totalVertexData[i].size());
 
-            // Calculate indices start index and count
-            meshInstance.IndicesStartIndex = i > 0 ? meshInstances[i - 1].IndicesStartIndex + meshInstances[i - 1].IndicesCount : 0;
-            meshInstance.IndicesCount = static_cast<unsigned int>(totalIndexData[i].size());
+    //        // Calculate indices start index and count
+    //        meshInstance.IndicesStartIndex = i > 0 ? meshInstances[i - 1].IndicesStartIndex + meshInstances[i - 1].IndicesCount : 0;
+    //        meshInstance.IndicesCount = static_cast<unsigned int>(totalIndexData[i].size());
 
-            meshInstances.push_back(meshInstance);
-        }
+    //        meshInstances.push_back(meshInstance);
+    //    }
 
-        // Convert to span
-        std::span<MeshInstanceAlign> spanVector = std::span(meshInstances);
+    //    // Convert to span
+    //    std::span<MeshInstanceAlign> spanVector = std::span(meshInstances);
 
-        // Add the total data
-        m_ssboMeshInstances->AllocateData(spanVector);
-        m_ssboMeshInstances->Unbind();
-    }
+    //    // Add the total data
+    //    m_ssboMeshInstances->AllocateData(spanVector);
+    //    m_ssboMeshInstances->Unbind();
+    //}
 
-    // VBO allocation
-    {
-        // Create SSBO for vertices
-        m_ssboVertices = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboVertices->Bind();
-        glBindBufferBase(m_ssboVertices->GetTarget(), 1, m_ssboVertices->GetHandle()); // Binding index: 1
+    //// VBO allocation
+    //{
+    //    // Create SSBO for vertices
+    //    m_ssboVertices = std::make_shared<ShaderStorageBufferObject>();
+    //    m_ssboVertices->Bind();
+    //    glBindBufferBase(m_ssboVertices->GetTarget(), 1, m_ssboVertices->GetHandle()); // Binding index: 1
 
-        // Flatten and convert to span
-        std::vector<VertexAlign> flattenedVector = FlattenVector<VertexAlign>(totalVertexData);
-        std::span<VertexAlign> spanVector = std::span(flattenedVector);
+    //    // Flatten and convert to span
+    //    std::vector<VertexAlign> flattenedVector = FlattenVector<VertexAlign>(totalVertexData);
+    //    std::span<VertexAlign> spanVector = std::span(flattenedVector);
 
-        // Add the total data
-        m_ssboVertices->AllocateData(spanVector);
-        m_ssboVertices->Unbind();
-    }
+    //    // Add the total data
+    //    m_ssboVertices->AllocateData(spanVector);
+    //    m_ssboVertices->Unbind();
+    //}
 
-    // EBO allocation
-    {
-        // Create SSBO Indices
-        m_ssboIndices = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboIndices->Bind();
-        glBindBufferBase(m_ssboIndices->GetTarget(), 2, m_ssboIndices->GetHandle()); // Binding index: 2
+    //// EBO allocation
+    //{
+    //    // Create SSBO Indices
+    //    m_ssboIndices = std::make_shared<ShaderStorageBufferObject>();
+    //    m_ssboIndices->Bind();
+    //    glBindBufferBase(m_ssboIndices->GetTarget(), 2, m_ssboIndices->GetHandle()); // Binding index: 2
 
-        // Flatten and convert to span
-        std::vector<unsigned int> flattenedVector = FlattenVector<unsigned int>(totalIndexData);
-        std::span<unsigned int> spanVector = std::span(flattenedVector);
+    //    // Flatten and convert to span
+    //    std::vector<unsigned int> flattenedVector = FlattenVector<unsigned int>(totalIndexData);
+    //    std::span<unsigned int> spanVector = std::span(flattenedVector);
 
-        // Add the total data
-        m_ssboIndices->AllocateData(spanVector);
-        m_ssboIndices->Unbind();
-    }
+    //    // Add the total data
+    //    m_ssboIndices->AllocateData(spanVector);
+    //    m_ssboIndices->Unbind();
+    //}
 
     // Diffuse Texture allocation
     {
@@ -450,7 +453,7 @@ void PathTracingRenderPass::InitializeBuffers()
         m_HDRIHandle = HDRIHandle;
 
         // Environment
-        EnvironmentAlign environment{ };
+        EnvironmentAlign environment { };
         environment.HDRIHandle = HDRIHandle;
         environment.skyRotationCos = 1.0f;
         environment.skyRotationSin = 0.0f;
@@ -461,6 +464,151 @@ void PathTracingRenderPass::InitializeBuffers()
         // Add the data
         m_ssboEnvironment->AllocateData(spanVector);
         m_ssboEnvironment->Unbind();
+    }
+
+    // BVH allocation
+    {
+        // Convert corrosponding vertices to a format that BVH can use to build BVH nodes
+
+        std::vector<BVH::BVHPrimitive> BVHPrimitives;
+        //unsigned int cumulativeVertices = 0;
+        //unsigned int cumulativeIndices = 0;
+
+        for (unsigned int meshIndex = 0; meshIndex < totalIndexData.size(); meshIndex++) 
+        {
+            const auto& vertexData = totalVertexData[meshIndex];
+            const auto& indexData = totalIndexData[meshIndex];
+
+            for (size_t i = 0; i < indexData.size(); i += 3)
+            {
+                unsigned int index1 = indexData[i + 0];
+                unsigned int index2 = indexData[i + 1];
+                unsigned int index3 = indexData[i + 2];
+
+                BVH::BVHPrimitive primitive { };
+
+                primitive.posA = vertexData[index1].pos;
+                primitive.posB = vertexData[index2].pos;
+                primitive.posC = vertexData[index3].pos;
+
+                primitive.norA = vertexData[index1].nor;
+                primitive.norB = vertexData[index2].nor;
+                primitive.norC = vertexData[index3].nor;
+
+                primitive.uvA = vertexData[index1].uv;
+                primitive.uvB = vertexData[index2].uv;
+                primitive.uvC = vertexData[index3].uv;
+
+                BVHPrimitives.push_back(primitive);
+
+                // Each primitive should have information about vertices it is associated with.
+                // This way we don't store pure triangles, which should save memory
+
+                //primitive.verticesStartIndex = cumulativeVertices;
+                //primitive.indicesStartIndex = cumulativeIndices;
+
+                // Add
+                //BVHPrimitives.push_back(primitive);
+
+                // Increment indices
+                //cumulativeIndices += 3;
+            }
+
+            // Increment vertices
+            //cumulativeVertices += static_cast<unsigned int>(vertexData.size());
+        }
+
+        // Create SSBO for BVH nodes
+        {
+            // Create SSBO for BVH nodes
+            m_ssboBVHNodes = std::make_shared<ShaderStorageBufferObject>();
+            m_ssboBVHNodes->Bind();
+            glBindBufferBase(m_ssboBVHNodes->GetTarget(), 6, m_ssboBVHNodes->GetHandle()); // Binding index: 6
+
+            // Initialize BVH nodes
+            BVH::BVHNode InitNode{ };
+            std::vector<BVH::BVHNode> BVHNodes{ InitNode };
+
+            // Calculate BVH
+            //BVH::BuildBVH(BVHPrimitives, BVHNodes, 0, (int)BVHPrimitives.size() - 1, 8);
+            BVH::BuildBVHWithSAH(BVHPrimitives, BVHNodes, 0, (int)BVHPrimitives.size() - 1, 8);
+
+            // Align BVH nodes
+            std::vector<BVH::BVHNodeAlign> BVHNodesAligned;
+            for (const BVH::BVHNode& node : BVHNodes)
+            {
+                BVH::BVHNodeAlign nodeAligned { };
+
+                nodeAligned.left = node.left;
+                nodeAligned.right = node.right;
+                nodeAligned.n = node.n;
+                nodeAligned.index = node.index;
+                nodeAligned.AA = node.AA;
+                nodeAligned.BB = node.BB;
+
+                // Add
+                BVHNodesAligned.push_back(nodeAligned);
+            }
+
+            // Convert to span
+            std::span<BVH::BVHNodeAlign> spanVector = std::span(BVHNodesAligned);
+
+            // Add the total data
+            m_ssboBVHNodes->AllocateData(spanVector);
+            m_ssboBVHNodes->Unbind();
+        }
+
+        // Create SSBO for BVH primitives
+        {
+            // Create SSBO for BVH primitives
+            m_ssboBVHPrimitives = std::make_shared<ShaderStorageBufferObject>();
+            m_ssboBVHPrimitives->Bind();
+            glBindBufferBase(m_ssboBVHPrimitives->GetTarget(), 7, m_ssboBVHPrimitives->GetHandle()); // Binding index: 7
+
+            // Align BVH primitives
+            std::vector<BVH::BVHPrimitiveAlign> BVHPrimitivesAligned;
+            for (const BVH::BVHPrimitive& primitive : BVHPrimitives)
+            {
+                glm::vec3 posA = primitive.posA;
+                glm::vec3 posB = primitive.posB;
+                glm::vec3 posC = primitive.posC;
+
+                glm::vec3 norA = primitive.norA;
+                glm::vec3 norB = primitive.norB;
+                glm::vec3 norC = primitive.norC;
+
+                glm::vec2 uvA = primitive.uvA;
+                glm::vec2 uvB = primitive.uvB;
+                glm::vec2 uvC = primitive.uvC;
+                
+                BVH::BVHPrimitiveAlign primitiveAligned{ };
+
+                primitiveAligned.posAuvX = glm::vec4(posA, uvA.x);
+                primitiveAligned.norAuvY = glm::vec4(norA, uvA.y);
+
+                primitiveAligned.posBuvX = glm::vec4(posB, uvB.x);
+                primitiveAligned.norBuvY = glm::vec4(norB, uvB.y);
+
+                primitiveAligned.posCuvX = glm::vec4(posC, uvC.x);
+                primitiveAligned.norCuvY = glm::vec4(norC, uvC.y);
+
+                // Add
+                BVHPrimitivesAligned.push_back(primitiveAligned);
+
+                //primitiveAligned.verticesStartIndex = primitive.verticesStartIndex;
+                //primitiveAligned.indicesStartIndex = primitive.indicesStartIndex;
+
+                //// Add
+                //BVHPrimitivesAligned.push_back(primitiveAligned);
+            }
+
+            // Convert to span
+            std::span<BVH::BVHPrimitiveAlign> spanVector = std::span(BVHPrimitivesAligned);
+
+            // Add the total data
+            m_ssboBVHPrimitives->AllocateData(spanVector);
+            m_ssboBVHPrimitives->Unbind();
+        }
     }
 }
 
