@@ -48,8 +48,7 @@ void PathTracingRenderPass::Render()
             glMakeTextureHandleResidentARB(materialSave.NormalTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.SpecularTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.SpecularColorTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.MetallicTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.RoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.MetallicRoughnessTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.SheenRoughnessTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.SheenColorTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.ClearcoatTextureHandle);
@@ -91,8 +90,7 @@ void PathTracingRenderPass::Render()
             glMakeTextureHandleNonResidentARB(materialSave.NormalTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.SpecularTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.SpecularColorTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.MetallicTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.RoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.MetallicRoughnessTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.SheenRoughnessTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.SheenColorTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.ClearcoatTextureHandle);
@@ -395,8 +393,7 @@ void PathTracingRenderPass::InitializeBuffers()
             materialAlign.NormalTextureHandle = materialSave.NormalTextureHandle;
             materialAlign.SpecularTextureHandle = materialSave.SpecularTextureHandle;
             materialAlign.SpecularColorTextureHandle = materialSave.SpecularColorTextureHandle;
-            materialAlign.MetallicTextureHandle = materialSave.MetallicTextureHandle;
-            materialAlign.RoughnessTextureHandle = materialSave.RoughnessTextureHandle;
+            materialAlign.MetallicRoughnessTextureHandle = materialSave.MetallicRoughnessTextureHandle;
             materialAlign.SheenRoughnessTextureHandle = materialSave.SheenRoughnessTextureHandle;
             materialAlign.SheenColorTextureHandle = materialSave.SheenColorTextureHandle;
             materialAlign.ClearcoatTextureHandle = materialSave.ClearcoatTextureHandle;

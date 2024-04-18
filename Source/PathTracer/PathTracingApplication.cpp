@@ -145,7 +145,8 @@ void PathTracingApplication::InvalidateScene()
 void PathTracingApplication::InitializeHDRI()
 {
     Texture2DLoader textureLoader(TextureObject::FormatRGBA, TextureObject::InternalFormatRGBA32F);
-    m_HDRI = textureLoader.LoadShared("Content/HDRI/meadow_2_4k.hdr");
+    //m_HDRI = textureLoader.LoadShared("Content/HDRI/Meadow.hdr");
+    m_HDRI = textureLoader.LoadShared("Content/HDRI/SymmetricalGarden.hdr");
 }
 
 void PathTracingApplication::InitializeModel()
@@ -200,23 +201,19 @@ void PathTracingApplication::InitializeModel()
     loader.SetSemanticAttribute(VertexAttribute::Semantic::TexCoord0);
 
     // Load models
-    //m_models.push_back(loader.Load("Content/Models/BrickCubesObj/BrickCubes.obj"));
-    //m_models.push_back(loader.Load("Content/Models/Mill/Mill.obj"));
-    //m_models.push_back(loader.Load("Content/Models/lucy.obj"));
-    //m_models.push_back(loader.Load("Content/Models/dragon.obj"));
-    //m_models.push_back(loader.Load("Content/Models/bunny.glb"));
-     
-    //m_models.push_back(loader.Load("Content/Models/bunny_test3.glb"));
-    //m_models.push_back(loader.Load("C:/Users/Silas/Desktop/bunny_test4.gltf"));
+    //m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
-    m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
-
-    //m_models.push_back(loader.Load("Content/Models/plane.obj"));
-    //m_models.push_back(loader.Load("Content/Models/icosphere.obj"));
-    //m_models.push_back(loader.Load("Content/Models/teapot.obj"));
-    //m_models.push_back(loader.Load("Content/Models/SportsCar/SportsCar.obj"));
-    //m_models.push_back(loader.Load("Content/Models/SponzaDabrovic/SponzaDabrovic.obj"));
-    //m_models.push_back(loader.Load("Content/Models/SponzaCrytek/SponzaCrytek.obj"));
+    m_models.push_back(loader.Load("Content/Models/Sponza/Sponza.gltf"));
+    //m_models.push_back(loader.Load("Content/Models/Bunny.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Circle.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Cone.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Cube.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Dragon.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Icosphere.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Plane.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Sphere.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Teapot.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
 }
 
 void PathTracingApplication::InitializeCamera()
@@ -224,7 +221,7 @@ void PathTracingApplication::InitializeCamera()
     // Create the main camera
     std::shared_ptr<Camera> camera = std::make_shared<Camera>();
     //camera->SetViewMatrix(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0));
-    camera->SetViewMatrix(glm::vec3(-8.0f, 5.0f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0));
+    camera->SetViewMatrix(glm::vec3(-7.5f, 5.0f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0));
     float fov = 1.57f;
     camera->SetPerspectiveProjectionMatrix(fov, GetMainWindow().GetAspectRatio(), 0.01f, 1000.0f);
 

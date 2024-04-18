@@ -70,8 +70,7 @@ private:
         GLuint64 NormalTextureHandle = 0;
         GLuint64 SpecularTextureHandle = 0;
         GLuint64 SpecularColorTextureHandle = 0;
-        GLuint64 MetallicTextureHandle = 0;
-        GLuint64 RoughnessTextureHandle = 0;
+        GLuint64 MetallicRoughnessTextureHandle = 0;
         GLuint64 SheenRoughnessTextureHandle = 0;
         GLuint64 SheenColorTextureHandle = 0;
         GLuint64 ClearcoatTextureHandle = 0;
@@ -112,8 +111,7 @@ private:
         GLuint64 NormalTextureHandle;
         GLuint64 SpecularTextureHandle;
         GLuint64 SpecularColorTextureHandle;
-        GLuint64 MetallicTextureHandle;
-        GLuint64 RoughnessTextureHandle;
+        GLuint64 MetallicRoughnessTextureHandle;
         GLuint64 SheenRoughnessTextureHandle;
         GLuint64 SheenColorTextureHandle;
         GLuint64 ClearcoatTextureHandle;

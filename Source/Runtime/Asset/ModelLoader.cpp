@@ -204,37 +204,34 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     LoadMaterialTexture(materialData, aiTextureType_NORMALS, 0, *material, Material::MaterialTextureSlot::NormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
     // Specular Texture
-    LoadMaterialTexture(materialData, aiTextureType_SPECULAR, 0, *material, Material::MaterialTextureSlot::SpecularTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, aiTextureType_SPECULAR, 0, *material, Material::MaterialTextureSlot::SpecularTexture, TextureObject::FormatRGBA, TextureObject::InternalFormatRGBA8);
     
     // Specular Color Texture
-    LoadMaterialTexture(materialData, aiTextureType_SPECULAR, 1, *material, Material::MaterialTextureSlot::SpecularColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8); // Note the index!
+    LoadMaterialTexture(materialData, aiTextureType_SPECULAR, 1, *material, Material::MaterialTextureSlot::SpecularColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8); // Note the index!
     
-    // Metallic Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_METALLIC_TEXTURE, *material, Material::MaterialTextureSlot::MetallicTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
-    
-    // Roughness Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::RoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    // Metallic Roughness Texture
+    LoadMaterialTexture(materialData, aiTextureType_METALNESS, 0, *material, Material::MaterialTextureSlot::MetallicRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8); // aiTextureType_DIFFUSE_ROUGHNESS is the same!
     
     // Sheen Roughness Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_SHEEN_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::SheenRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, AI_MATKEY_SHEEN_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::SheenRoughnessTexture, TextureObject::FormatRGBA, TextureObject::InternalFormatRGBA8);
     
     // Sheen Color Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_SHEEN_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::SheenColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, AI_MATKEY_SHEEN_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::SheenColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
     // Clearcoat Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
     // Clearcoat Roughness Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
     // Clearcoat Normal Texture
     LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_NORMAL_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatNormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
     // Transmission Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_TRANSMISSION_TEXTURE, *material, Material::MaterialTextureSlot::TransmissionTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, AI_MATKEY_TRANSMISSION_TEXTURE, *material, Material::MaterialTextureSlot::TransmissionTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
     // Emissive Texture
-    LoadMaterialTexture(materialData, aiTextureType_EMISSIVE, 0, *material, Material::MaterialTextureSlot::EmissiveTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    LoadMaterialTexture(materialData, aiTextureType_EMISSIVE, 0, *material, Material::MaterialTextureSlot::EmissiveTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
 
     // Load attributes to material
     
