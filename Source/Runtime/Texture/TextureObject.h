@@ -72,6 +72,9 @@ public:
     // Set value of the texture parameter of type color
     void SetParameter(ParameterColor pname, std::span<const GLfloat, 4> params);
 
+    // Get bindless texture handle
+    GLuint64 GetBindlessTextureHandle();
+
     // Get number of componentes (1-4) of a specific texture format)
     static int GetComponentCount(Format format);
 

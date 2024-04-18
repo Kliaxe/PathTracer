@@ -22,14 +22,43 @@ public:
         OverrideCulling = 1 << 3
     };
 
-    // Avaliable textures for this materiala
+    // Avaliable textures for this material
     enum MaterialTextureSlot
     {
-        Diffuse,
-        Normal,
-        Metallic,
-        Roughness,
+        BaseColorTexture,
+        NormalTexture,
+        SpecularTexture,
+        SpecularColorTexture,
+        MetallicTexture,
+        RoughnessTexture,
+        SheenRoughnessTexture,
+        SheenColorTexture,
+        ClearcoatTexture,
+        ClearcoatRoughnessTexture,
+        ClearcoatNormalTexture,
+        TransmissionTexture,
+        EmissiveTexture,
         TextureSlotCount,
+    };
+
+    // Avaliable attributes for this material
+    struct MaterialAttributes
+    {
+		glm::vec3 baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+		float specular = 1.0f;
+		glm::vec3 specularColor = glm::vec3(1.0f, 1.0f, 1.0f);
+		float metallic = 0.0f;
+		float roughness = 1.0f;
+		float subsurface = 0.0f;
+		glm::vec3 subsurfaceColor = glm::vec3(0.5f, 0.5f, 0.5f);
+		float anisotropy = 0.0f;
+		float sheenRoughness = 0.0f;
+		glm::vec3 sheenColor = glm::vec3(0.0f, 0.0f, 0.0f);
+		float clearcoat = 0.0f;
+		float clearcoatRoughness = 0.0f;
+		float IOR = 1.0f;
+		float transmission = 0.0f;
+		glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
     };
 
     // Different conditions for depth and stencil tests
@@ -130,6 +159,10 @@ public:
     std::shared_ptr<Texture2DObject> GetMaterialTexture(MaterialTextureSlot slot) const { return m_materialTextures[slot]; }
     void SetMaterialTexture(std::shared_ptr<Texture2DObject> texture, MaterialTextureSlot slot) { m_materialTextures[slot] = texture; }
 
+    // Get and Set material texture slots
+    MaterialAttributes GetMaterialAttributes() const { return m_materialAttributes; }
+    void SetMaterialAttributes(MaterialAttributes attributes) { m_materialAttributes = attributes; }
+
 private:
     // Set all the properties relative to depth
     void UseDepthTest() const;
@@ -185,8 +218,12 @@ private:
     Color m_blendColor;
 
 private:
-    // Array of all textures. There can only be one unique texture per material.
+
+    // Array of all textures.
     std::array<std::shared_ptr<Texture2DObject>, MaterialTextureSlot::TextureSlotCount> m_materialTextures;
+    
+    // Instance containing all material attributes.
+    MaterialAttributes m_materialAttributes;
 };
 
 // Different conditions for depth and stencil tests

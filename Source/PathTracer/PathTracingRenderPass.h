@@ -55,6 +55,92 @@ private:
     std::shared_ptr<FramebufferObject> m_framebuffer;
 
 private:
+    // What VBO is made out of, based on allowed semantics
+    struct VertexSave
+    {
+        glm::vec3 pos;
+        glm::vec3 nor;
+        glm::vec2 uv;
+    };
+    
+    struct MaterialSave
+    {
+        // Texture handles
+        GLuint64 BaseColorTextureHandle = 0;
+        GLuint64 NormalTextureHandle = 0;
+        GLuint64 SpecularTextureHandle = 0;
+        GLuint64 SpecularColorTextureHandle = 0;
+        GLuint64 MetallicTextureHandle = 0;
+        GLuint64 RoughnessTextureHandle = 0;
+        GLuint64 SheenRoughnessTextureHandle = 0;
+        GLuint64 SheenColorTextureHandle = 0;
+        GLuint64 ClearcoatTextureHandle = 0;
+        GLuint64 ClearcoatRoughnessTextureHandle = 0;
+        GLuint64 ClearcoatNormalTextureHandle = 0;
+        GLuint64 TransmissionTextureHandle = 0;
+        GLuint64 EmissiveTextureHandle = 0;
+
+        // Attributes
+        glm::vec3 baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+        float specular = 1.0f;
+        glm::vec3 specularColor = glm::vec3(1.0f, 1.0f, 1.0f);
+        float metallic = 0.0f;
+        float roughness = 1.0f;
+        float subsurface = 0.0f;
+        glm::vec3 subsurfaceColor = glm::vec3(0.5f, 0.5f, 0.5f);
+        float anisotropy = 0.0f;
+        float sheenRoughness = 0.0f;
+        glm::vec3 sheenColor = glm::vec3(0.0f, 0.0f, 0.0f);
+        float clearcoat = 0.0f;
+        float clearcoatRoughness = 0.0f;
+        float IOR = 1.0f;
+        float transmission = 0.0f;
+        glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
+    };
+
+    struct alignas(16) EnvironmentAlign
+    {
+        GLuint64 HDRIHandle;
+        float skyRotationCos;
+        float skyRotationSin;
+    };
+
+    struct alignas(16) MaterialAlign
+    {
+        // Texture handles
+        GLuint64 BaseColorTextureHandle;
+        GLuint64 NormalTextureHandle;
+        GLuint64 SpecularTextureHandle;
+        GLuint64 SpecularColorTextureHandle;
+        GLuint64 MetallicTextureHandle;
+        GLuint64 RoughnessTextureHandle;
+        GLuint64 SheenRoughnessTextureHandle;
+        GLuint64 SheenColorTextureHandle;
+        GLuint64 ClearcoatTextureHandle;
+        GLuint64 ClearcoatRoughnessTextureHandle;
+        GLuint64 ClearcoatNormalTextureHandle;
+        GLuint64 TransmissionTextureHandle;
+        GLuint64 EmissiveTextureHandle;
+
+        // Attributes
+        alignas(16) glm::vec3 baseColor;
+        float specular;
+        alignas(16) glm::vec3 specularColor;
+        float metallic;
+        float roughness;
+        float subsurface;
+        alignas(16) glm::vec3 subsurfaceColor;
+        float anisotropy;
+        float sheenRoughness;
+        alignas(16) glm::vec3 sheenColor;
+        float clearcoat;
+        float clearcoatRoughness;
+        float IOR;
+        float transmission;
+        alignas(16) glm::vec3 emissiveColor;
+    };
+
+private:
     int m_width;
     int m_height;
     PathTracingApplication* m_pathTracingApplication;
@@ -64,49 +150,14 @@ private:
     glm::vec3* m_denoiserRenderOutputPtr;
 
     // Bindless handles
-    std::vector<GLuint64> m_totalDiffuseTextureHandles;
-    std::vector<GLuint64> m_totalNormalTextureHandles;
     GLuint64 m_HDRIHandle;
 
+    // Saved materials
+    std::vector<MaterialSave> m_materialsSaved;
+
     // SSBOs
-    //std::shared_ptr<ShaderStorageBufferObject> m_ssboMeshInstances;
-    //std::shared_ptr<ShaderStorageBufferObject> m_ssboVertices;
-    //std::shared_ptr<ShaderStorageBufferObject> m_ssboIndices;
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboDiffuseTextures;
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboNormalTextures;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboMaterials;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboEnvironment;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHNodes;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHPrimitives;
-
-private:
-    //struct MeshInstanceAlign
-    //{
-    //    unsigned int VerticesStartIndex;
-    //    unsigned int VerticesCount;
-    //    unsigned int IndicesStartIndex;
-    //    unsigned int IndicesCount;
-    //};
-
-    // What VBO is made out of, based on allowed semantics
-    struct Vertex
-    {
-        glm::vec3 pos;
-        glm::vec3 nor;
-        glm::vec2 uv;
-    };
-
-    //struct VertexAlign
-    //{
-    //    glm::vec3 pos; float _padding1;
-    //    glm::vec3 nor; float _padding2;
-    //    glm::vec2 uv;  glm::vec2 _padding3;
-    //};
-
-    struct EnvironmentAlign
-    {
-        GLuint64 HDRIHandle;
-        float skyRotationCos;
-        float skyRotationSin;
-        float _padding1;
-    };
 };

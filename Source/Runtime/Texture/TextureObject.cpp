@@ -106,6 +106,12 @@ void TextureObject::SetParameter(ParameterColor pname, std::span<const GLfloat, 
     glTexParameterfv(GetTarget(), static_cast<GLenum>(pname), params.data());
 }
 
+GLuint64 TextureObject::GetBindlessTextureHandle()
+{
+    Handle handle = GetHandle();
+    return glGetTextureHandleARB(handle);
+}
+
 #ifndef NDEBUG
 bool TextureObject::IsValidFormat(Format format, InternalFormat internalFormat)
 {

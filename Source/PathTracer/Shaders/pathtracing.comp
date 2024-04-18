@@ -1,7 +1,8 @@
 
-#version 430
+#version 460
 
 #extension GL_ARB_bindless_texture : require
+#extension GL_ARB_gpu_shader_int64 : enable
 
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -28,37 +29,56 @@ uniform sampler2D PreviousPathTracingTexture;
 
 // --------------------------------------------------------
 
-struct MeshInstance 
-{
-	uint VerticesStartIndex;
-	uint VerticesCount;
-	uint IndicesStartIndex;
-	uint IndicesCount;
-};
-
-// Must match the allowed semantics
-struct Vertex 
-{
-	vec3 pos;
-	vec3 nor;
-	vec2 uv;
-};
-
 struct Environment
 {
-	sampler2D HDRI;
+	uint64_t HDRI;
 	float skyRotationCos;
     float skyRotationSin;
 };
 
+struct Material
+{
+	// Texture handles
+    uint64_t BaseColorTextureHandle;
+    uint64_t NormalTextureHandle;
+    uint64_t SpecularTextureHandle;
+    uint64_t SpecularColorTextureHandle;
+    uint64_t MetallicTextureHandle;
+    uint64_t RoughnessTextureHandle;
+    uint64_t SheenRoughnessTextureHandle;
+    uint64_t SheenColorTextureHandle;
+    uint64_t ClearcoatTextureHandle;
+    uint64_t ClearcoatRoughnessTextureHandle;
+    uint64_t ClearcoatNormalTextureHandle;
+    uint64_t TransmissionTextureHandle;
+    uint64_t EmissiveTextureHandle;
+
+    // Attributes
+    vec3 baseColor;
+    float specular;
+    vec3 specularColor;
+    float metallic;
+    float roughness;
+    float subsurface;
+    vec3 subsurfaceColor;
+    float anisotropy;
+    float sheenRoughness;
+    vec3 sheenColor;
+    float clearcoat;
+    float clearcoatRoughness;
+    float IOR;
+    float transmission;
+    vec3 emissiveColor;
+};
+
 struct BVHNode
 {
-	int left;           // Left subtree
-    int right;          // Right subtree
-    int n;              // Number of primitives
-    int index;          // Primitive index
-    vec3 AA; float padding1;
-	vec3 BB; float padding2;
+	int left;   // Left subtree
+    int right;  // Right subtree
+    int n;      // Number of primitives
+    int index;	// Primitive index
+    vec3 AA;	// Bounding box AA
+	vec3 BB;	// Bounding box BB
 };
 
 struct BVHPrimitive
@@ -72,137 +92,72 @@ struct BVHPrimitive
 	vec4 posCuvX;
 	vec4 norCuvY;
 
-//	uint verticesStartIndex;
-//	uint indicesStartIndex;
+	uint meshIndex;
 };
 
 // --------------------------------------------------------
 
-//layout(std430, binding = 0) readonly buffer MeshInstancesBuffer
-//{
-//    MeshInstance data[];
-//} meshInstances;
-
-//layout(std430, binding = 1) readonly buffer VerticesBuffer
-//{
-//    Vertex data[];
-//} vertices;
-//
-//layout(std430, binding = 2) readonly buffer IndicesBuffer
-//{
-//    uint data[];
-//} indices;
-
-layout(std430, binding = 3) readonly buffer DiffuseTexturesBuffer
+layout(std430, binding = 0) readonly buffer EnvironmentBuffer
 {
-    sampler2D data[];
-} diffuseTextures;
+    Environment environment;
+};
 
-layout(std430, binding = 4) readonly buffer NormalTexturesBuffer
+layout(std430, binding = 1) readonly buffer MaterialBuffer
 {
-    sampler2D data[];
-} normalTextures;
+    Material materials[];
+};
 
-layout(std430, binding = 5) readonly buffer EnvironmentBuffer
+layout(std430, binding = 2) readonly buffer BVHNodeBuffer
 {
-    Environment data;
-} environment;
+    BVHNode BVHNodes[];
+};
 
-layout(std430, binding = 6) readonly buffer BVHNodeBuffer
+layout(std430, binding = 3) readonly buffer BVHPrimitiveBuffer
 {
-    BVHNode data[];
-} BVHNodes;
-
-layout(std430, binding = 7) readonly buffer BVHPrimitiveBuffer
-{
-    BVHPrimitive data[];
-} BVHPrimitives;
+    BVHPrimitive BVHPrimitives[];
+};
 
 // --------------------------------------------------------
-
-struct RayTracingMaterial
-{
-	vec3 color;
-	vec3 normal;
-
-	void Initialize()
-	{
-		color = vec3(0.0f);
-		normal = vec3(0.0f);
-	}
-};
 
 struct Ray
 {
 	vec3 origin;
 	vec3 direction;
-
-	void Initialize()
-	{
-		origin = vec3(0.0f);
-		direction = vec3(0.0f);
-	}
 };
 
 struct HitInfo
 {
 	bool didHit;
-	float dst;
 	vec3 hitPoint;
+	float dst;
 	vec3 normal;
 	vec2 uv;
-	RayTracingMaterial material;
-
-	void Initialize() 
-	{
-        didHit = false;
-        dst = 0.0f;
-        hitPoint = vec3(0.0f);
-        normal = vec3(0.0f);
-        uv = vec2(0.0f);
-        material.Initialize();
-    }
+	vec3 tangent;
+	vec3 bitangent;
+	Material material;
 };
 
 // Note: Triangle order matters! Must go counter-clock wise
 // Calculate the intersection of a ray with a triangle using Möller–Trumbore algorithm
-// Thanks to https://stackoverflow.com/a/42752998
-HitInfo RayTriangle(Ray ray, Vertex vertexA, Vertex vertexB, Vertex vertexC)
-{
-	vec3 edgeAB = vertexB.pos.xyz - vertexA.pos.xyz;
-	vec3 edgeAC = vertexC.pos.xyz - vertexA.pos.xyz;
-	vec3 normalVector = cross(edgeAB, edgeAC);
-	vec3 ao = ray.origin - vertexA.pos.xyz;
-	vec3 dao = cross(ao, ray.direction);
-
-	float determinant = -dot(ray.direction, normalVector);
-	float invDet = 1.0f / determinant;
-	
-	// Calculate dst to triangle & barycentric coordinates of intersection point
-	float dst = dot(ao, normalVector) * invDet;
-	float u = dot(edgeAC, dao) * invDet;
-	float v = -dot(edgeAB, dao) * invDet;
-	float w = 1.0f - u - v;
-	
-	// Initialize hit info
-	HitInfo hitInfo;
-	hitInfo.didHit = determinant >= 1e-6 && dst >= 0.0f && u >= 0.0f && v >= 0.0f && w >= 0.0f;
-	hitInfo.hitPoint = ray.origin + ray.direction * dst;
-	hitInfo.normal = normalize(vertexA.nor.xyz * w + vertexB.nor.xyz * u + vertexC.nor.xyz * v);
-	hitInfo.uv = vertexA.uv.xy * w + vertexB.uv.xy * u + vertexC.uv.xy * v;
-	hitInfo.dst = dst;
-	return hitInfo;
-}
-
-// Note: Triangle order matters! Must go counter-clock wise
-// Calculate the intersection of a ray with a triangle using Möller–Trumbore algorithm
 // Based on: https://stackoverflow.com/a/42752998
-HitInfo RayTriangleTest(Ray ray, BVHPrimitive primitive)
+HitInfo RayTriangle(Ray ray, BVHPrimitive primitive)
 {
-	vec3 edgeAB = primitive.posBuvX.xyz - primitive.posAuvX.xyz;
-	vec3 edgeAC = primitive.posCuvX.xyz - primitive.posAuvX.xyz;
+	vec3 posA = primitive.posAuvX.xyz;
+	vec3 posB = primitive.posBuvX.xyz;
+	vec3 posC = primitive.posCuvX.xyz;
+
+	vec3 norA = primitive.norAuvY.xyz;
+	vec3 norB = primitive.norBuvY.xyz;
+	vec3 norC = primitive.norCuvY.xyz;
+	
+	vec2 uvA = vec2(primitive.posAuvX.w, primitive.norAuvY.w);
+	vec2 uvB = vec2(primitive.posBuvX.w, primitive.norBuvY.w);
+	vec2 uvC = vec2(primitive.posCuvX.w, primitive.norCuvY.w);
+
+	vec3 edgeAB = posB - posA;
+	vec3 edgeAC = posC - posA;
 	vec3 normalVector = cross(edgeAB, edgeAC);
-	vec3 ao = ray.origin - primitive.posAuvX.xyz;
+	vec3 ao = ray.origin - posA;
 	vec3 dao = cross(ao, ray.direction);
 
 	float determinant = -dot(ray.direction, normalVector);
@@ -218,9 +173,21 @@ HitInfo RayTriangleTest(Ray ray, BVHPrimitive primitive)
 	HitInfo hitInfo;
 	hitInfo.didHit = determinant >= 1e-10 && dst >= 0.0f && u >= 0.0f && v >= 0.0f && w >= 0.0f;
 	hitInfo.hitPoint = ray.origin + ray.direction * dst;
-	hitInfo.normal = normalize(primitive.norAuvY.xyz * w + primitive.norBuvY.xyz * u + primitive.norCuvY.xyz * v);
-	hitInfo.uv = vec2(primitive.posAuvX.w, primitive.norAuvY.w) * w + vec2(primitive.posBuvX.w, primitive.norBuvY.w) * u + vec2(primitive.posCuvX.w, primitive.norCuvY.w);
 	hitInfo.dst = dst;
+
+	// Calculate normal and uv
+	hitInfo.normal = normalize(norA * w + norB * u + norC * v);
+	hitInfo.uv = uvA * w + uvB * u + uvC * v;
+
+	// Calculate tangent and bitangent
+	vec2 deltaUVB = uvB - uvA;
+    vec2 deltaUVC = uvC - uvA;
+
+    float invTangentDeterminant = 1.0f / (deltaUVB.x * deltaUVC.y - deltaUVB.y * deltaUVC.x);
+
+    hitInfo.tangent = (edgeAB * deltaUVC.y - edgeAC * deltaUVB.y) * invTangentDeterminant;
+    hitInfo.bitangent = (edgeAC * deltaUVB.x - edgeAB * deltaUVC.x) * invTangentDeterminant;
+
 	return hitInfo;
 }
 
@@ -243,54 +210,90 @@ float HitAABB(Ray r, vec3 AA, vec3 BB)
 
 BVHPrimitive GetBVHPrimitive(int index)
 {
-	BVHPrimitive primitive = BVHPrimitives.data[index];
+	BVHPrimitive primitive = BVHPrimitives[index];
 	return primitive;
+}
+
+Material GetMaterial(unsigned int index)
+{
+	Material material = materials[index];
+	return material;
+}
+
+vec3 SampleNormalMap(sampler2D normalTexture, HitInfo hitInfo)
+{
+	vec3 N = hitInfo.normal;
+	vec3 T = hitInfo.tangent;
+
+	// Gram-Schmidt process: Re-orthogonalize T with respect to N
+	T = normalize(T - dot(T, N) * N);
+
+	// Recalculate bitangent due to Gram-Schmidt
+	vec3 B = cross(N, T);
+
+	// Create tangent space matrix
+	// mat3 TBN = transpose(mat3(T, B, N)); // ???
+	mat3 TBN = mat3(T, B, N);
+
+	// Sample normal texture
+	vec3 normalMap = texture(normalTexture, hitInfo.uv).rgb;
+
+	// Transform normal vector to range [-1,1]
+    normalMap = normalize(normalMap * 2.0 - 1.0);
+
+	// Apply tangent space matrix
+    normalMap = normalize(TBN * normalMap);
+
+    return normalize(normalMap);
+}
+
+Material EvaluateMaterial(Material material, inout HitInfo hitInfo)
+{
+	Material evalutedMaterial = material;
+
+	if (material.BaseColorTextureHandle != 0)
+	{
+		evalutedMaterial.baseColor = texture(sampler2D(material.BaseColorTextureHandle), hitInfo.uv).rgb;
+	}
+
+	if (material.NormalTextureHandle != 0)
+	{
+		hitInfo.normal = SampleNormalMap(sampler2D(material.NormalTextureHandle), hitInfo);
+//		evalutedMaterial.baseColor = hitInfo.normal;
+	}
+
+//	if (material.MetallicTextureHandle != 0)
+//	{
+//		evalutedMaterial.baseColor = texture(sampler2D(material.BaseColorTextureHandle), hitInfo.uv).rgb;
+//	}
+//
+//	if (material.RoughnessTextureHandle != 0)
+//	{
+//		evalutedMaterial.baseColor = texture(sampler2D(material.BaseColorTextureHandle), hitInfo.uv).rgb;
+//	}
+
+	return evalutedMaterial;
 }
 
 HitInfo HitArray(Ray ray, int L, int R)
 {
 	HitInfo closestHit;
-	closestHit.Initialize();
+	closestHit.didHit = false;
 	closestHit.dst = FLT_MAX;
-
-	// Create Material
-	RayTracingMaterial material;
-	material.Initialize();
 
 	for (int i = L; i <= R; i++)
 	{
 		BVHPrimitive primitive = GetBVHPrimitive(i);
-
-//		uint a = primitive.indicesStartIndex + 0;
-//		uint b = primitive.indicesStartIndex + 1;
-//		uint c = primitive.indicesStartIndex + 2;
-//
-//		uint indexA = indices.data[a];
-//		uint indexB = indices.data[b];
-//		uint indexC = indices.data[c];
-//
-//		Vertex vertexA = vertices.data[primitive.verticesStartIndex + indexA];
-//		Vertex vertexB = vertices.data[primitive.verticesStartIndex + indexB];
-//		Vertex vertexC = vertices.data[primitive.verticesStartIndex + indexC];
-//
-//		HitInfo hitInfo = RayTriangle(ray, vertexA, vertexB, vertexC);
-
-		HitInfo hitInfo = RayTriangleTest(ray, primitive);
+		HitInfo hitInfo = RayTriangle(ray, primitive);
 
 		if (hitInfo.didHit && hitInfo.dst < closestHit.dst)
 		{
 			closestHit = hitInfo;
+			
+			Material currentMaterial = GetMaterial(primitive.meshIndex);
+			Material evaluatedMaterial = EvaluateMaterial(currentMaterial, hitInfo);
 
-			// TODO: We shouldn't sample textures here?
-			// Diffuse and Normal Textures
-			//sampler2D diffuseTexture = diffuseTextures.data[primitive.meshIndex];
-			//sampler2D normalTexture = normalTextures.data[primitive.meshIndex];
-			//material.color = texture(diffuseTexture, hitInfo.uv).rgb;
-			//material.normal = texture(normalTexture, hitInfo.uv).rgb;
-
-			material.color = vec3(1.0f, 1.0f, 1.0f);
-
-			closestHit.material = material;
+			closestHit.material = evaluatedMaterial;
 		}
 	}
 
@@ -299,14 +302,14 @@ HitInfo HitArray(Ray ray, int L, int R)
 
 BVHNode GetBVHNode(int index)
 {
-	BVHNode node = BVHNodes.data[index];
+	BVHNode node = BVHNodes[index];
 	return node;
 }
 
 HitInfo HitBVH(Ray ray)
 {
 	HitInfo closestHit;
-	closestHit.Initialize();
+	closestHit.didHit = false;
 	closestHit.dst = FLT_MAX;
 
 	// Stack
@@ -525,13 +528,13 @@ vec3 GetEnvironmentLight(Ray ray)
 	vec3 V = ray.direction;
 
 	mat2x2 rot = mat2x2(
-		environment.data.skyRotationCos, -environment.data.skyRotationSin,
-		environment.data.skyRotationSin, environment.data.skyRotationCos
+		environment.skyRotationCos, -environment.skyRotationSin,
+		environment.skyRotationSin, environment.skyRotationCos
 	);
 	V.xz = V.xz * rot;
 
 	vec2 uv = (vec2(-atan(V.z, V.x) / PI, -V.y) + 1.0f) * 0.5f;
-	return texture(environment.data.HDRI, uv).rgb;
+	return texture(sampler2D(environment.HDRI), uv).rgb;
 }
 
 vec3 Trace(Ray ray, inout uint rngState)
@@ -548,8 +551,8 @@ vec3 Trace(Ray ray, inout uint rngState)
 			ray.origin = hitInfo.hitPoint;
 			ray.direction = normalize(hitInfo.normal + RandomDirection(rngState));
 
-			RayTracingMaterial material = hitInfo.material;
-			rayColor *= material.color;
+			Material material = hitInfo.material;
+			rayColor *= material.baseColor;
 
 			// Random early exit if ray colour is nearly 0 (can't contribute much to final result)
 			float p = max(rayColor.r, max(rayColor.g, rayColor.b));
@@ -584,7 +587,6 @@ void main()
 
 	// Ray
 	Ray ray;
-	ray.Initialize();
 	ray.origin = (inverse(ViewMatrix) * vec4(origin, 1)).xyz;
 	ray.direction = (inverse(ViewMatrix) * vec4(dir, 0)).xyz;
 
@@ -618,8 +620,15 @@ void main()
 
 //	HitInfo hitInfo = HitBVH(ray);
 //	vec4 value = vec4(hitInfo.didHit);
-//	HitInfo hitInfo = HitArray(ray, 0, BVHPrimitives.data.length() - 1);
+//	HitInfo hitInfo = HitArray(ray, 0, BVHPrimitives.length() - 1);
 //	vec4 value = vec4(hitInfo.didHit);
+
+//	HitInfo hitInfo = HitBVH(ray);
+//
+//	Material material = GetMaterial(0);
+//	hitInfo.normal = SampleNormalMap(sampler2D(material.NormalTextureHandle), hitInfo);
+//
+//	vec4 value = vec4(float(hitInfo.didHit) * hitInfo.normal, 1.0f);
 
 	imageStore(imgOutput, texelCoord, value);
 }

@@ -37,7 +37,12 @@ PathTracingApplication::PathTracingApplication()
     // OpenGL Extension Control
     if (!(GL_ARB_bindless_texture))
     {
-        std::cerr << "Bindless textures are not supported by your vendor!" << std::endl;
+        std::cerr << "Bindless textures extension is not supported by your vendor!" << std::endl;
+        exit(-1);
+    }
+    if (!(GL_ARB_gpu_shader_int64))
+    {
+        std::cerr << "64 bit shader integers extension is not supported by your vendor!" << std::endl;
         exit(-1);
     }
 }
@@ -199,13 +204,19 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Mill/Mill.obj"));
     //m_models.push_back(loader.Load("Content/Models/lucy.obj"));
     //m_models.push_back(loader.Load("Content/Models/dragon.obj"));
-    //m_models.push_back(loader.Load("Content/Models/bunny.obj"));
+    //m_models.push_back(loader.Load("Content/Models/bunny.glb"));
+     
+    //m_models.push_back(loader.Load("Content/Models/bunny_test3.glb"));
+    //m_models.push_back(loader.Load("C:/Users/Silas/Desktop/bunny_test4.gltf"));
+    //m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
+    m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
+
     //m_models.push_back(loader.Load("Content/Models/plane.obj"));
     //m_models.push_back(loader.Load("Content/Models/icosphere.obj"));
     //m_models.push_back(loader.Load("Content/Models/teapot.obj"));
     //m_models.push_back(loader.Load("Content/Models/SportsCar/SportsCar.obj"));
     //m_models.push_back(loader.Load("Content/Models/SponzaDabrovic/SponzaDabrovic.obj"));
-    m_models.push_back(loader.Load("Content/Models/SponzaCrytek/SponzaCrytek.obj"));
+    //m_models.push_back(loader.Load("Content/Models/SponzaCrytek/SponzaCrytek.obj"));
 }
 
 void PathTracingApplication::InitializeCamera()
@@ -281,7 +292,7 @@ void PathTracingApplication::InitializeRenderer()
 std::shared_ptr<Material> PathTracingApplication::CreatePathTracingMaterial()
 {
     std::vector<const char*> computeShaderPaths;
-    //computeShaderPaths.push_back("Shaders/version430.glsl"); // VS GLSL Extension won't work without a #version, so temporally disabled
+    //computeShaderPaths.push_back("Shaders/version460.glsl"); // VS GLSL Extension won't work without a #version, so temporally disabled
     computeShaderPaths.push_back("Shaders/pathtracing.comp");
     Shader computeShader = ShaderLoader(Shader::ComputeShader).Load(computeShaderPaths);
 
@@ -302,12 +313,12 @@ std::shared_ptr<Material> PathTracingApplication::CreateCopyMaterial()
     // TODO: Create MaterialLibrary class for common materials, such as this
 
     std::vector<const char*> vertexShaderPaths;
-    vertexShaderPaths.push_back("Shaders/version430.glsl");
+    vertexShaderPaths.push_back("Shaders/version460.glsl");
     vertexShaderPaths.push_back("Shaders/Renderer/fullscreen.vert");
     Shader vertexShader = ShaderLoader(Shader::VertexShader).Load(vertexShaderPaths);
 
     std::vector<const char*> fragmentShaderPaths;
-    fragmentShaderPaths.push_back("Shaders/version430.glsl");
+    fragmentShaderPaths.push_back("Shaders/version460.glsl");
     fragmentShaderPaths.push_back("Shaders/Renderer/copy.frag");
     Shader fragmentShader = ShaderLoader(Shader::FragmentShader).Load(fragmentShaderPaths);
 

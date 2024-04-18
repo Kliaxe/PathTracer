@@ -54,6 +54,10 @@ private:
     void LoadTexture(const aiMaterial& materialData, int textureType, Material& material, ShaderProgram::Location location,
         int materialTextureSlot, TextureObject::Format format, TextureObject::InternalFormat internalFormat) const;
 
+    // Load a texture to a specific material texture slot
+    void LoadMaterialTexture(const aiMaterial& materialData, int textureType, int textureTypeIndex, Material& material,
+        int materialTextureSlot, TextureObject::Format format, TextureObject::InternalFormat internalFormat) const;
+
     // Build the vertex data from the mesh data
     static std::vector<GLubyte> CollectVertexData(const aiMesh& meshData, VertexFormat& vertexFormat, bool interleaved, std::set<VertexAttribute::Semantic> allowedSemantics);
 

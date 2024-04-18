@@ -150,49 +150,142 @@ void ModelLoader::GenerateSubmesh(Mesh& mesh, const aiMesh& meshData)
 std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materialData)
 {
     std::shared_ptr<Material> material = std::make_shared<Material>(*m_referenceMaterial);
+
+    //float value;
+    //for (auto& materialPropertyPair : m_materialPropertyMap)
+    //{
+    //    aiColor3D color;
+    //    MaterialProperty materialProperty = materialPropertyPair.first;
+    //    ShaderProgram::Location location = materialPropertyPair.second;
+    //    switch (materialProperty)
+    //    {
+    //    case MaterialProperty::AmbientColor:
+    //        if (materialData.Get(AI_MATKEY_COLOR_AMBIENT, color) == aiReturn_SUCCESS)
+    //        {
+    //            material->SetUniformValue(location, glm::vec3(color.r, color.g, color.b));
+    //        }
+    //        break;
+    //    case MaterialProperty::DiffuseColor:
+    //        if (materialData.Get(AI_MATKEY_COLOR_DIFFUSE, color) == aiReturn_SUCCESS)
+    //        {
+    //            material->SetUniformValue(location, glm::vec3(color.r, color.g, color.b));
+    //        }
+    //        break;
+    //    case MaterialProperty::SpecularColor:
+    //        if (materialData.Get(AI_MATKEY_COLOR_SPECULAR, color) == aiReturn_SUCCESS)
+    //        {
+    //            material->SetUniformValue(location, glm::vec3(color.r, color.g, color.b));
+    //        }
+    //        break;
+    //    case MaterialProperty::SpecularExponent:
+    //        if (materialData.Get(AI_MATKEY_SHININESS, value) == aiReturn_SUCCESS)
+    //        {
+    //            material->SetUniformValue(location, value);
+    //        }
+    //        break;
+    //    case MaterialProperty::DiffuseTexture:
+    //        LoadTexture(materialData, aiTextureType_DIFFUSE, *material, location, Material::MaterialTextureSlot::BaseColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    //        break;
+    //    case MaterialProperty::NormalTexture:
+    //        LoadTexture(materialData, aiTextureType_NORMALS, *material, location, Material::MaterialTextureSlot::NormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
+    //        break;
+    //    case MaterialProperty::SpecularTexture:
+    //        LoadTexture(materialData, aiTextureType_SHININESS, *material, location, Material::MaterialTextureSlot::RoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    //        break;
+    //    }
+    //}
+
+    // Load textures to material 
+
+    // Base Color Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_BASE_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::BaseColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Normal Texture
+    LoadMaterialTexture(materialData, aiTextureType_NORMALS, 0, *material, Material::MaterialTextureSlot::NormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
+    
+    // Specular Texture
+    LoadMaterialTexture(materialData, aiTextureType_SPECULAR, 0, *material, Material::MaterialTextureSlot::SpecularTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Specular Color Texture
+    LoadMaterialTexture(materialData, aiTextureType_SPECULAR, 1, *material, Material::MaterialTextureSlot::SpecularColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8); // Note the index!
+    
+    // Metallic Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_METALLIC_TEXTURE, *material, Material::MaterialTextureSlot::MetallicTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Roughness Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::RoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Sheen Roughness Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_SHEEN_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::SheenRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Sheen Color Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_SHEEN_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::SheenColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Clearcoat Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Clearcoat Roughness Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Clearcoat Normal Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_NORMAL_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatNormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
+    
+    // Transmission Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_TRANSMISSION_TEXTURE, *material, Material::MaterialTextureSlot::TransmissionTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    
+    // Emissive Texture
+    LoadMaterialTexture(materialData, aiTextureType_EMISSIVE, 0, *material, Material::MaterialTextureSlot::EmissiveTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+
+    // Load attributes to material
+    
+    Material::MaterialAttributes materialAttributes{ };
+
     float value;
-    for (auto& materialPropertyPair : m_materialPropertyMap)
-    {
-        aiColor3D color;
-        MaterialProperty materialProperty = materialPropertyPair.first;
-        ShaderProgram::Location location = materialPropertyPair.second;
-        switch (materialProperty)
-        {
-        case MaterialProperty::AmbientColor:
-            if (materialData.Get(AI_MATKEY_COLOR_AMBIENT, color) == aiReturn_SUCCESS)
-            {
-                material->SetUniformValue(location, glm::vec3(color.r, color.g, color.b));
-            }
-            break;
-        case MaterialProperty::DiffuseColor:
-            if (materialData.Get(AI_MATKEY_COLOR_DIFFUSE, color) == aiReturn_SUCCESS)
-            {
-                material->SetUniformValue(location, glm::vec3(color.r, color.g, color.b));
-            }
-            break;
-        case MaterialProperty::SpecularColor:
-            if (materialData.Get(AI_MATKEY_COLOR_SPECULAR, color) == aiReturn_SUCCESS)
-            {
-                material->SetUniformValue(location, glm::vec3(color.r, color.g, color.b));
-            }
-            break;
-        case MaterialProperty::SpecularExponent:
-            if (materialData.Get(AI_MATKEY_SHININESS, value) == aiReturn_SUCCESS)
-            {
-                material->SetUniformValue(location, value);
-            }
-            break;
-        case MaterialProperty::DiffuseTexture:
-            LoadTexture(materialData, aiTextureType_DIFFUSE, *material, location, Material::MaterialTextureSlot::Diffuse, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
-            break;
-        case MaterialProperty::NormalTexture:
-            LoadTexture(materialData, aiTextureType_NORMALS, *material, location, Material::MaterialTextureSlot::Normal, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
-            break;
-        case MaterialProperty::SpecularTexture:
-            LoadTexture(materialData, aiTextureType_SHININESS, *material, location, Material::MaterialTextureSlot::Roughness, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
-            break;
-        }
-    }
+    aiColor3D color;
+    
+    // Base Color
+    if (materialData.Get(AI_MATKEY_BASE_COLOR, color) == aiReturn_SUCCESS) { materialAttributes.baseColor = glm::vec3(color.r, color.g, color.b); }
+    
+    // Specular
+    if (materialData.Get(AI_MATKEY_SPECULAR_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.specular = value; }
+        
+    // Specular Color
+    if (materialData.Get(AI_MATKEY_COLOR_SPECULAR, color) == aiReturn_SUCCESS) { materialAttributes.specularColor = glm::vec3(color.r, color.g, color.b); }
+    
+    // Metallic
+    if (materialData.Get(AI_MATKEY_METALLIC_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.metallic = value; }
+    
+    // Roughness
+    if (materialData.Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.roughness = value; }    
+
+    // Subsurface - Didn't make into glTF 2.0 specification. Can always be modified afterwards
+
+    // Anisotropy - glTF anisotropy extension is not supported by Assimp. Can always be modified afterwards. I could always add it myself in another Assimp branch...
+    
+    // Sheen Roughness
+    if (materialData.Get(AI_MATKEY_SHEEN_ROUGHNESS_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.sheenRoughness = value; }
+
+    // Sheen Color
+    if (materialData.Get(AI_MATKEY_SHEEN_COLOR_FACTOR, color) == aiReturn_SUCCESS) { materialAttributes.sheenColor = glm::vec3(color.r, color.g, color.b); }    
+
+    // Clearcoat
+    if (materialData.Get(AI_MATKEY_CLEARCOAT_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.clearcoat = value; }
+
+    // Clearcoat Roughness
+    if (materialData.Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.clearcoatRoughness = value; }
+    
+    // IOR
+    if (materialData.Get(AI_MATKEY_REFRACTI, value) == aiReturn_SUCCESS) { materialAttributes.IOR = value; }
+
+    // Transmission
+    if (materialData.Get(AI_MATKEY_TRANSMISSION_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.transmission = value; }
+
+    // Emissive Color
+    if (materialData.Get(AI_MATKEY_COLOR_EMISSIVE, color) == aiReturn_SUCCESS) { materialAttributes.emissiveColor = glm::vec3(color.r, color.g, color.b); }
+
+    // Finally, assign attributes to material
+    material->SetMaterialAttributes(materialAttributes);
+
     return material;
 }
 
@@ -200,7 +293,6 @@ void ModelLoader::LoadTexture(const aiMaterial& materialData, int textureTypeVal
     int materialTextureSlotValue, TextureObject::Format format, TextureObject::InternalFormat internalFormat) const
 {
     aiTextureType textureType = static_cast<aiTextureType>(textureTypeValue);
-    Material::MaterialTextureSlot materialTextureSlot = static_cast<Material::MaterialTextureSlot>(materialTextureSlotValue);
     if (materialData.GetTextureCount(textureType) > 0)
     {
         assert(materialData.GetTextureCount(textureType) == 1);
@@ -212,8 +304,31 @@ void ModelLoader::LoadTexture(const aiMaterial& materialData, int textureTypeVal
             m_textureLoader.SetInternalFormat(internalFormat);
             std::shared_ptr<Texture2DObject> texture = m_textureLoader.LoadShared(texturePath.C_Str());
 
+            Material::MaterialTextureSlot materialTextureSlot = static_cast<Material::MaterialTextureSlot>(materialTextureSlotValue);
             material.SetMaterialTexture(texture, materialTextureSlot);
+
             material.SetUniformValue(location, texture);
+        }
+    }
+}
+
+void ModelLoader::LoadMaterialTexture(const aiMaterial& materialData, int textureTypeValue, int textureTypeIndex, Material& material,
+    int materialTextureSlotValue, TextureObject::Format format, TextureObject::InternalFormat internalFormat) const
+{
+    aiTextureType textureType = static_cast<aiTextureType>(textureTypeValue);
+    if (materialData.GetTextureCount(textureType) > 0)
+    {
+        assert(materialData.GetTextureCount(textureType) == 1);
+        aiString texturePath;
+        if (materialData.GetTexture(textureType, 0, &texturePath) == aiReturn_SUCCESS)
+        {
+            texturePath = m_baseFolder + texturePath.C_Str();
+            m_textureLoader.SetFormat(format);
+            m_textureLoader.SetInternalFormat(internalFormat);
+            std::shared_ptr<Texture2DObject> texture = m_textureLoader.LoadShared(texturePath.C_Str());
+
+            Material::MaterialTextureSlot materialTextureSlot = static_cast<Material::MaterialTextureSlot>(materialTextureSlotValue);
+            material.SetMaterialTexture(texture, materialTextureSlot);
         }
     }
 }

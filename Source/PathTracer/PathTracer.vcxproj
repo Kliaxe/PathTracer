@@ -189,7 +189,7 @@ xcopy /s /d "$(ProjectDir)Content" "$(OutDir)Content\"</Command>
     <None Include="Shaders\pathtracing.comp" />
     <None Include="Shaders\Renderer\copy.frag" />
     <None Include="Shaders\Renderer\fullscreen.vert" />
-    <None Include="Shaders\version430.glsl" />
+    <None Include="Shaders\version460.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -42,22 +42,27 @@ void PathTracingRenderPass::Render()
         assert(m_pathTracingMaterial);
 
         // Mark all as resident
-        for (GLuint64 diffuseHandle : m_totalDiffuseTextureHandles)
+        for (const MaterialSave& materialSave : m_materialsSaved)
         {
-            glMakeTextureHandleResidentARB(diffuseHandle);
-        }
-        for (GLuint64 normalHandle : m_totalNormalTextureHandles)
-        {
-            glMakeTextureHandleResidentARB(normalHandle);
+            glMakeTextureHandleResidentARB(materialSave.BaseColorTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.NormalTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.SpecularTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.SpecularColorTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.MetallicTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.RoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.SheenRoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.SheenColorTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.ClearcoatTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.ClearcoatRoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.ClearcoatNormalTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.TransmissionTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.EmissiveTextureHandle);
         }
         glMakeTextureHandleResidentARB(m_HDRIHandle);
         
         // Bind SSBO buffers
-        //m_ssboMeshInstances->Bind();
-        //m_ssboVertices->Bind();
-        //m_ssboIndices->Bind();
-        m_ssboDiffuseTextures->Bind();
-        m_ssboNormalTextures->Bind();
+        m_ssboEnvironment->Bind();
+        m_ssboMaterials->Bind();
         m_ssboBVHNodes->Bind();
         m_ssboBVHPrimitives->Bind();
 
@@ -80,13 +85,21 @@ void PathTracingRenderPass::Render()
 
         // Mark all as non-resident - can be skipped if you know the same textures
         // will all be used for the next frame
-        for (GLuint64 diffuseHandle : m_totalDiffuseTextureHandles)
+        for (const MaterialSave& materialSave : m_materialsSaved)
         {
-            glMakeTextureHandleNonResidentARB(diffuseHandle);
-        }
-        for (GLuint64 normalHandle : m_totalNormalTextureHandles)
-        {
-            glMakeTextureHandleNonResidentARB(normalHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.BaseColorTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.NormalTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.SpecularTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.SpecularColorTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.MetallicTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.RoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.SheenRoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.SheenColorTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.ClearcoatTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.ClearcoatRoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.ClearcoatNormalTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.TransmissionTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.EmissiveTextureHandle);
         }
         glMakeTextureHandleNonResidentARB(m_HDRIHandle);
     }
@@ -189,8 +202,8 @@ void PathTracingRenderPass::InitializeTextures()
 
 void PathTracingRenderPass::InitializeBuffers()
 {
-    // VBO and EBO data of all models
-    std::vector<std::vector<Vertex>> totalVertexData;
+    // VBO and EBO data of all meshes
+    std::vector<std::vector<VertexSave>> totalVertexData;
     std::vector<std::vector<unsigned int>> totalIndexData;
 
     // Go through each model from application
@@ -221,13 +234,13 @@ void PathTracingRenderPass::InitializeBuffers()
                 glGetBufferSubData(GL_ARRAY_BUFFER, 0, vboSize, vboData.data());
 
                 // Convert GLubyte data to Vertex data
-                std::vector<Vertex> vertexData(vboSize / sizeof(Vertex));
+                std::vector<VertexSave> vertexData(vboSize / sizeof(VertexSave));
                 const GLubyte* currentPtr = vboData.data();
 
                 // Map vboData to vertexData of type 'Vertex'
-                for (size_t j = 0; j < vboSize / sizeof(Vertex); j++)
+                for (size_t j = 0; j < vboSize / sizeof(VertexSave); j++)
                 {
-                    Vertex vertex { };
+                    VertexSave vertex { };
 
                     // Copy position data (assuming it's tightly packed)
                     memcpy(&vertex.pos, currentPtr, sizeof(glm::vec3));
@@ -299,140 +312,33 @@ void PathTracingRenderPass::InitializeBuffers()
                 ebo.Unbind();
             }
 
-            // Fetch all materials
-            // Model contains a list of pointers to materials, one for each submesh, 
-            // so we go through them here instead of per mesh
+            // Fetch Materials
             {
+                // Current mesh material
                 Material& material = model.GetMaterial(i);
 
-                // Add diffuseTexture to totalDiffuseTextureHandles
-                {
-                    std::shared_ptr<Texture2DObject> diffuseTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::Diffuse);
-                    if (diffuseTexture)
-                    {
-                        const GLuint64 diffuseHandle = glGetTextureHandleARB(diffuseTexture->GetHandle());
-                        if (diffuseHandle == 0)
-                        {
-                            std::cerr << "Error! Diffuse Handle returned null" << std::endl;
-                            exit(-1);
-                        }
+                // Placeholder
+                MaterialSave materialSave{ };
 
-                        m_totalDiffuseTextureHandles.push_back(diffuseHandle);
-                    }
-                }
+                // Base Color Texture
+                std::shared_ptr<Texture2DObject> baseColorTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::BaseColorTexture);
+                if (baseColorTexture) { materialSave.BaseColorTextureHandle = baseColorTexture->GetBindlessTextureHandle(); }
 
-                // Add diffuseTexture to totalDiffuseTextureHandles
-                {
-                    std::shared_ptr<Texture2DObject> normalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::Normal);
-                    if (normalTexture)
-                    {
-                        const GLuint64 normalHandle = glGetTextureHandleARB(normalTexture->GetHandle());
-                        if (normalHandle == 0)
-                        {
-                            std::cerr << "Error! Normal Handle returned null" << std::endl;
-                            exit(-1);
-                        }
+                // Normal Texture
+                std::shared_ptr<Texture2DObject> normalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::NormalTexture);
+                if (normalTexture) { materialSave.NormalTextureHandle = normalTexture->GetBindlessTextureHandle(); }
 
-                        m_totalNormalTextureHandles.push_back(normalHandle);
-                    }
-                }
+                // Get material attributes
+                Material::MaterialAttributes materialAttributes = material.GetMaterialAttributes();
+
+                // Translate attributes
+                materialSave.baseColor = materialAttributes.baseColor;
+                materialSave.roughness = materialAttributes.roughness;
+
+                // Push
+                m_materialsSaved.push_back(materialSave);
             }
         }
-    }
-
-    //// MeshInstance allocation
-    //{
-    //    // Create SSBO for mesh instances
-    //    m_ssboMeshInstances = std::make_shared<ShaderStorageBufferObject>();
-    //    m_ssboMeshInstances->Bind();
-    //    glBindBufferBase(m_ssboMeshInstances->GetTarget(), 0, m_ssboMeshInstances->GetHandle()); // Binding index: 0
-
-    //    std::vector<MeshInstanceAlign> meshInstances;
-
-    //    // Iterate over each mesh instance
-    //    for (size_t i = 0; i < totalVertexData.size(); ++i)
-    //    {
-    //        MeshInstanceAlign meshInstance{ };
-
-    //        // Calculate vertices start index and count
-    //        meshInstance.VerticesStartIndex = i > 0 ? meshInstances[i - 1].VerticesStartIndex + meshInstances[i - 1].VerticesCount : 0;
-    //        meshInstance.VerticesCount = static_cast<unsigned int>(totalVertexData[i].size());
-
-    //        // Calculate indices start index and count
-    //        meshInstance.IndicesStartIndex = i > 0 ? meshInstances[i - 1].IndicesStartIndex + meshInstances[i - 1].IndicesCount : 0;
-    //        meshInstance.IndicesCount = static_cast<unsigned int>(totalIndexData[i].size());
-
-    //        meshInstances.push_back(meshInstance);
-    //    }
-
-    //    // Convert to span
-    //    std::span<MeshInstanceAlign> spanVector = std::span(meshInstances);
-
-    //    // Add the total data
-    //    m_ssboMeshInstances->AllocateData(spanVector);
-    //    m_ssboMeshInstances->Unbind();
-    //}
-
-    //// VBO allocation
-    //{
-    //    // Create SSBO for vertices
-    //    m_ssboVertices = std::make_shared<ShaderStorageBufferObject>();
-    //    m_ssboVertices->Bind();
-    //    glBindBufferBase(m_ssboVertices->GetTarget(), 1, m_ssboVertices->GetHandle()); // Binding index: 1
-
-    //    // Flatten and convert to span
-    //    std::vector<VertexAlign> flattenedVector = FlattenVector<VertexAlign>(totalVertexData);
-    //    std::span<VertexAlign> spanVector = std::span(flattenedVector);
-
-    //    // Add the total data
-    //    m_ssboVertices->AllocateData(spanVector);
-    //    m_ssboVertices->Unbind();
-    //}
-
-    //// EBO allocation
-    //{
-    //    // Create SSBO Indices
-    //    m_ssboIndices = std::make_shared<ShaderStorageBufferObject>();
-    //    m_ssboIndices->Bind();
-    //    glBindBufferBase(m_ssboIndices->GetTarget(), 2, m_ssboIndices->GetHandle()); // Binding index: 2
-
-    //    // Flatten and convert to span
-    //    std::vector<unsigned int> flattenedVector = FlattenVector<unsigned int>(totalIndexData);
-    //    std::span<unsigned int> spanVector = std::span(flattenedVector);
-
-    //    // Add the total data
-    //    m_ssboIndices->AllocateData(spanVector);
-    //    m_ssboIndices->Unbind();
-    //}
-
-    // Diffuse Texture allocation
-    {
-        // Create SSBO for diffuse textures
-        m_ssboDiffuseTextures = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboDiffuseTextures->Bind();
-        glBindBufferBase(m_ssboDiffuseTextures->GetTarget(), 3, m_ssboDiffuseTextures->GetHandle()); // Binding index: 3
-
-        // Convert to span
-        std::span<GLuint64> spanVector = std::span(m_totalDiffuseTextureHandles);
-
-        // Add the total data
-        m_ssboDiffuseTextures->AllocateData(spanVector);
-        m_ssboDiffuseTextures->Unbind();
-    }
-
-    // Normal Texture allocation
-    {
-        // Create SSBO for diffuse textures
-        m_ssboNormalTextures = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboNormalTextures->Bind();
-        glBindBufferBase(m_ssboNormalTextures->GetTarget(), 4, m_ssboNormalTextures->GetHandle()); // Binding index: 4
-
-        // Convert to span
-        std::span<GLuint64> spanVector = std::span(m_totalNormalTextureHandles);
-
-        // Add the total data
-        m_ssboNormalTextures->AllocateData(spanVector);
-        m_ssboNormalTextures->Unbind();
     }
 
     // Environment allocation
@@ -440,7 +346,9 @@ void PathTracingRenderPass::InitializeBuffers()
         // Create SSBO for environment
         m_ssboEnvironment = std::make_shared<ShaderStorageBufferObject>();
         m_ssboEnvironment->Bind();
-        glBindBufferBase(m_ssboEnvironment->GetTarget(), 5, m_ssboEnvironment->GetHandle()); // Binding index: 5
+
+        // Binding index
+        glBindBufferBase(m_ssboEnvironment->GetTarget(), 0, m_ssboEnvironment->GetHandle()); // Binding index: 0
 
         // Get HDRI handle and save
         std::shared_ptr<Texture2DObject> HDRI = m_pathTracingApplication->GetHDRI();
@@ -459,11 +367,72 @@ void PathTracingRenderPass::InitializeBuffers()
         environment.skyRotationSin = 0.0f;
 
         // Convert to span
-        std::span<EnvironmentAlign> spanVector = std::span(&environment, 1);
+        std::span<EnvironmentAlign> span = std::span(&environment, 1);
 
-        // Add the data
-        m_ssboEnvironment->AllocateData(spanVector);
+        // Allocate
+        m_ssboEnvironment->AllocateData(span);
         m_ssboEnvironment->Unbind();
+    }
+
+    // Material allocation
+    {
+        // Create SSBO for materials
+        m_ssboMaterials = std::make_shared<ShaderStorageBufferObject>();
+        m_ssboMaterials->Bind();
+
+        // Binding index
+        glBindBufferBase(m_ssboMaterials->GetTarget(), 1, m_ssboMaterials->GetHandle()); // Binding index: 1
+
+        // Convert to MaterialAlign for GPU consumption
+
+        std::vector<MaterialAlign> materialsAlign;
+        for (const MaterialSave& materialSave : m_materialsSaved)
+        {
+            MaterialAlign materialAlign{ };
+
+            // Texture handles
+            materialAlign.BaseColorTextureHandle = materialSave.BaseColorTextureHandle;
+            materialAlign.NormalTextureHandle = materialSave.NormalTextureHandle;
+            materialAlign.SpecularTextureHandle = materialSave.SpecularTextureHandle;
+            materialAlign.SpecularColorTextureHandle = materialSave.SpecularColorTextureHandle;
+            materialAlign.MetallicTextureHandle = materialSave.MetallicTextureHandle;
+            materialAlign.RoughnessTextureHandle = materialSave.RoughnessTextureHandle;
+            materialAlign.SheenRoughnessTextureHandle = materialSave.SheenRoughnessTextureHandle;
+            materialAlign.SheenColorTextureHandle = materialSave.SheenColorTextureHandle;
+            materialAlign.ClearcoatTextureHandle = materialSave.ClearcoatTextureHandle;
+            materialAlign.ClearcoatRoughnessTextureHandle = materialSave.ClearcoatRoughnessTextureHandle;
+            materialAlign.ClearcoatNormalTextureHandle = materialSave.ClearcoatNormalTextureHandle;
+            materialAlign.TransmissionTextureHandle = materialSave.TransmissionTextureHandle;
+            materialAlign.EmissiveTextureHandle = materialSave.EmissiveTextureHandle;
+
+            // Attributes
+            materialAlign.baseColor = materialSave.baseColor;
+            materialAlign.specular = materialSave.specular;
+            materialAlign.specularColor = materialSave.specularColor;
+            materialAlign.metallic = materialSave.metallic;
+            materialAlign.roughness = materialSave.roughness;
+            materialAlign.subsurface = materialSave.subsurface;
+            materialAlign.subsurfaceColor = materialSave.subsurfaceColor;
+            materialAlign.anisotropy = materialSave.anisotropy;
+            materialAlign.sheenRoughness = materialSave.sheenRoughness;
+            materialAlign.sheenColor = materialSave.sheenColor;
+            materialAlign.clearcoat = materialSave.clearcoat;
+            materialAlign.clearcoatRoughness = materialSave.clearcoatRoughness;
+            materialAlign.IOR = materialSave.IOR;
+            materialAlign.transmission = materialSave.transmission;
+            materialAlign.emissiveColor = materialSave.emissiveColor;
+
+            // Push
+            materialsAlign.push_back(materialAlign);
+        }
+
+        // Convert to span
+        std::span<MaterialAlign> span = std::span(materialsAlign);
+
+        // Allocate
+        m_ssboMaterials->AllocateData(span);
+
+        m_ssboMaterials->Unbind();
     }
 
     // BVH allocation
@@ -471,13 +440,10 @@ void PathTracingRenderPass::InitializeBuffers()
         // Convert corrosponding vertices to a format that BVH can use to build BVH nodes
 
         std::vector<BVH::BVHPrimitive> BVHPrimitives;
-        //unsigned int cumulativeVertices = 0;
-        //unsigned int cumulativeIndices = 0;
-
         for (unsigned int meshIndex = 0; meshIndex < totalIndexData.size(); meshIndex++) 
         {
-            const auto& vertexData = totalVertexData[meshIndex];
-            const auto& indexData = totalIndexData[meshIndex];
+            const std::vector<VertexSave>& vertexData = totalVertexData[meshIndex];
+            const std::vector<unsigned int>& indexData = totalIndexData[meshIndex];
 
             for (size_t i = 0; i < indexData.size(); i += 3)
             {
@@ -499,23 +465,11 @@ void PathTracingRenderPass::InitializeBuffers()
                 primitive.uvB = vertexData[index2].uv;
                 primitive.uvC = vertexData[index3].uv;
 
+                primitive.meshIndex = meshIndex;
+
+                // Push
                 BVHPrimitives.push_back(primitive);
-
-                // Each primitive should have information about vertices it is associated with.
-                // This way we don't store pure triangles, which should save memory
-
-                //primitive.verticesStartIndex = cumulativeVertices;
-                //primitive.indicesStartIndex = cumulativeIndices;
-
-                // Add
-                //BVHPrimitives.push_back(primitive);
-
-                // Increment indices
-                //cumulativeIndices += 3;
             }
-
-            // Increment vertices
-            //cumulativeVertices += static_cast<unsigned int>(vertexData.size());
         }
 
         // Create SSBO for BVH nodes
@@ -523,7 +477,9 @@ void PathTracingRenderPass::InitializeBuffers()
             // Create SSBO for BVH nodes
             m_ssboBVHNodes = std::make_shared<ShaderStorageBufferObject>();
             m_ssboBVHNodes->Bind();
-            glBindBufferBase(m_ssboBVHNodes->GetTarget(), 6, m_ssboBVHNodes->GetHandle()); // Binding index: 6
+
+            // Binding index
+            glBindBufferBase(m_ssboBVHNodes->GetTarget(), 2, m_ssboBVHNodes->GetHandle()); // Binding index: 2
 
             // Initialize BVH nodes
             BVH::BVHNode InitNode{ };
@@ -551,10 +507,10 @@ void PathTracingRenderPass::InitializeBuffers()
             }
 
             // Convert to span
-            std::span<BVH::BVHNodeAlign> spanVector = std::span(BVHNodesAligned);
+            std::span<BVH::BVHNodeAlign> span = std::span(BVHNodesAligned);
 
-            // Add the total data
-            m_ssboBVHNodes->AllocateData(spanVector);
+            // Allocate
+            m_ssboBVHNodes->AllocateData(span);
             m_ssboBVHNodes->Unbind();
         }
 
@@ -563,7 +519,9 @@ void PathTracingRenderPass::InitializeBuffers()
             // Create SSBO for BVH primitives
             m_ssboBVHPrimitives = std::make_shared<ShaderStorageBufferObject>();
             m_ssboBVHPrimitives->Bind();
-            glBindBufferBase(m_ssboBVHPrimitives->GetTarget(), 7, m_ssboBVHPrimitives->GetHandle()); // Binding index: 7
+
+            // Binding index
+            glBindBufferBase(m_ssboBVHPrimitives->GetTarget(), 3, m_ssboBVHPrimitives->GetHandle()); // Binding index: 3
 
             // Align BVH primitives
             std::vector<BVH::BVHPrimitiveAlign> BVHPrimitivesAligned;
@@ -592,21 +550,17 @@ void PathTracingRenderPass::InitializeBuffers()
                 primitiveAligned.posCuvX = glm::vec4(posC, uvC.x);
                 primitiveAligned.norCuvY = glm::vec4(norC, uvC.y);
 
-                // Add
+                primitiveAligned.meshIndex = primitive.meshIndex;
+
+                // Push
                 BVHPrimitivesAligned.push_back(primitiveAligned);
-
-                //primitiveAligned.verticesStartIndex = primitive.verticesStartIndex;
-                //primitiveAligned.indicesStartIndex = primitive.indicesStartIndex;
-
-                //// Add
-                //BVHPrimitivesAligned.push_back(primitiveAligned);
             }
 
             // Convert to span
-            std::span<BVH::BVHPrimitiveAlign> spanVector = std::span(BVHPrimitivesAligned);
+            std::span<BVH::BVHPrimitiveAlign> span = std::span(BVHPrimitivesAligned);
 
-            // Add the total data
-            m_ssboBVHPrimitives->AllocateData(spanVector);
+            // Allocate
+            m_ssboBVHPrimitives->AllocateData(span);
             m_ssboBVHPrimitives->Unbind();
         }
     }

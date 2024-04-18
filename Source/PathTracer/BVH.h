@@ -34,33 +34,31 @@ public:
 		glm::vec2 uvB;
 		glm::vec2 uvC;
 
-		//unsigned int verticesStartIndex;
-		//unsigned int indicesStartIndex;
+		unsigned int meshIndex;
 	};
 
-	struct BVHNodeAlign
+	struct alignas(16) BVHNodeAlign
 	{
 		int left;
 		int right;
 		int n; 
 		int index;
-		glm::vec3 AA; float _padding1;
-		glm::vec3 BB; float _padding2;
+		alignas(16) glm::vec3 AA;
+		alignas(16) glm::vec3 BB;
 	};
 
-	struct BVHPrimitiveAlign
+	struct alignas(16) BVHPrimitiveAlign
 	{
-		glm::vec4 posAuvX;
-		glm::vec4 norAuvY;
+		alignas(16) glm::vec4 posAuvX;
+		alignas(16) glm::vec4 norAuvY;
 
-		glm::vec4 posBuvX;
-		glm::vec4 norBuvY;
+		alignas(16) glm::vec4 posBuvX;
+		alignas(16) glm::vec4 norBuvY;
 
-		glm::vec4 posCuvX;
-		glm::vec4 norCuvY;
+		alignas(16) glm::vec4 posCuvX;
+		alignas(16) glm::vec4 norCuvY;
 
-		//unsigned int verticesStartIndex;
-		//unsigned int indicesStartIndex;
+		alignas(16) unsigned int meshIndex;
 	};
 
 	// Construct BVH

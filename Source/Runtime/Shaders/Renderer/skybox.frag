@@ -1,4 +1,4 @@
-#version 330 core
+#version 460 core
 
 //Inputs
 in vec3 ViewDir;

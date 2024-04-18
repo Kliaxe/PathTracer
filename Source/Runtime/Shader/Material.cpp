@@ -19,7 +19,9 @@ Material::Material(std::shared_ptr<ShaderProgram> shaderProgram, const NameSet& 
     , m_blendEquations{ BlendEquation::None }
     , m_blendParams{ BlendParam::One, BlendParam::Zero, BlendParam::One, BlendParam::Zero }
     , m_cullMode(CullMode::Back)
+    , m_materialAttributes{ }
 {
+    // Initialize texture array
     m_materialTextures.fill(std::shared_ptr<Texture2DObject>{});
 }
 
