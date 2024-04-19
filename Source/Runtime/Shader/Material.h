@@ -55,7 +55,7 @@ public:
 		glm::vec3 sheenColor = glm::vec3(0.0f, 0.0f, 0.0f);
 		float clearcoat = 0.0f;
 		float clearcoatRoughness = 0.0f;
-		float IOR = 1.0f;
+		float refraction = 1.0f;
 		float transmission = 0.0f;
 		glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
     };

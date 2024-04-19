@@ -92,7 +92,7 @@ private:
         glm::vec3 sheenColor = glm::vec3(0.0f, 0.0f, 0.0f);
         float clearcoat = 0.0f;
         float clearcoatRoughness = 0.0f;
-        float IOR = 1.0f;
+        float refraction = 1.0f;
         float transmission = 0.0f;
         glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
     };
@@ -133,7 +133,7 @@ private:
         alignas(16) glm::vec3 sheenColor;
         float clearcoat;
         float clearcoatRoughness;
-        float IOR;
+        float refraction;
         float transmission;
         alignas(16) glm::vec3 emissiveColor;
     };

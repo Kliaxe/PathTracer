@@ -203,7 +203,7 @@ void PathTracingApplication::InitializeModel()
     // Load models
     //m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
-    m_models.push_back(loader.Load("Content/Models/Sponza/Sponza.gltf"));
+    //m_models.push_back(loader.Load("Content/Models/Sponza/Sponza.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Bunny.glb"));
     //m_models.push_back(loader.Load("Content/Models/Circle.glb"));
     //m_models.push_back(loader.Load("Content/Models/Cone.glb"));
@@ -214,6 +214,20 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Sphere.glb"));
     //m_models.push_back(loader.Load("Content/Models/Teapot.glb"));
     //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
+
+    Model model = loader.Load("Content/Models/Bunny.glb");
+    //Model model = loader.Load("Content/Models/sphere.glb");
+
+    Material::MaterialAttributes bunnyMaterialAttributes{ };
+    bunnyMaterialAttributes.baseColor = glm::vec3(252.0f / 255.0f, 186.0f / 255.0f, 3.0f / 255.0f);
+    bunnyMaterialAttributes.roughness = 0.1f;
+    bunnyMaterialAttributes.metallic = 1.0f;
+
+    std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(model.GetMaterial(0));
+    bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
+    model.SetMaterial(0, bunnyMaterial);
+
+    m_models.push_back(model);
 }
 
 void PathTracingApplication::InitializeCamera()

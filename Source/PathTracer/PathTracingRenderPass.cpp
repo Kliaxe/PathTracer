@@ -331,7 +331,20 @@ void PathTracingRenderPass::InitializeBuffers()
 
                 // Translate attributes
                 materialSave.baseColor = materialAttributes.baseColor;
+                materialSave.specular = materialAttributes.specular;
+                materialSave.specularColor = materialAttributes.specularColor;
+                materialSave.metallic = materialAttributes.metallic;
                 materialSave.roughness = materialAttributes.roughness;
+                materialSave.subsurface = materialAttributes.subsurface;
+                materialSave.subsurfaceColor = materialAttributes.subsurfaceColor;
+                materialSave.anisotropy = materialAttributes.anisotropy;
+                materialSave.sheenRoughness = materialAttributes.sheenRoughness;
+                materialSave.sheenColor = materialAttributes.sheenColor;
+                materialSave.clearcoat = materialAttributes.clearcoat;
+                materialSave.clearcoatRoughness = materialAttributes.clearcoatRoughness;
+                materialSave.refraction = materialAttributes.refraction;
+                materialSave.transmission = materialAttributes.transmission;
+                materialSave.emissiveColor = materialAttributes.emissiveColor;
 
                 // Push
                 m_materialsSaved.push_back(materialSave);
@@ -415,7 +428,7 @@ void PathTracingRenderPass::InitializeBuffers()
             materialAlign.sheenColor = materialSave.sheenColor;
             materialAlign.clearcoat = materialSave.clearcoat;
             materialAlign.clearcoatRoughness = materialSave.clearcoatRoughness;
-            materialAlign.IOR = materialSave.IOR;
+            materialAlign.refraction = materialSave.refraction;
             materialAlign.transmission = materialSave.transmission;
             materialAlign.emissiveColor = materialSave.emissiveColor;
 

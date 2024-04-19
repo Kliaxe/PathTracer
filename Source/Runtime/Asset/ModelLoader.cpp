@@ -272,7 +272,7 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     if (materialData.Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.clearcoatRoughness = value; }
     
     // IOR
-    if (materialData.Get(AI_MATKEY_REFRACTI, value) == aiReturn_SUCCESS) { materialAttributes.IOR = value; }
+    if (materialData.Get(AI_MATKEY_REFRACTI, value) == aiReturn_SUCCESS) { materialAttributes.refraction = value; }
 
     // Transmission
     if (materialData.Get(AI_MATKEY_TRANSMISSION_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.transmission = value; }
