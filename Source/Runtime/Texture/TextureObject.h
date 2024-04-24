@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Object.h"
+#include "Core/Data.h"
 #include <span>
 
 // Abstract OpenGL object that encapsulates a Texture
@@ -49,11 +50,15 @@ public:
 
     // Get value of the texture parameter of type float
     void GetParameter(ParameterFloat pname, GLfloat& param) const;
+    // Get value of the texture parameter of type float with a given level
+    void GetParameter(GLint level, ParameterFloat pname, GLfloat& param) const;
     // Set value of the texture parameter of type float
     void SetParameter(ParameterFloat pname, GLfloat param);
 
     // Get value of the texture parameter of type int
     void GetParameter(ParameterInt pname, GLint& param) const;
+    // Get value of the texture parameter of type int with a given level
+    void GetParameter(GLint level, ParameterInt pname, GLint& param) const;
     // Set value of the texture parameter of type int
     void SetParameter(ParameterInt pname, GLint param);
 
@@ -69,6 +74,8 @@ public:
 
     // Get value of the texture parameter of type color
     void GetParameter(ParameterColor pname, std::span<GLfloat, 4> params) const;
+    // Get value of the texture parameter of type color with a given level
+    void GetParameter(GLint level, ParameterColor pname, std::span<GLfloat, 4> params) const;
     // Set value of the texture parameter of type color
     void SetParameter(ParameterColor pname, std::span<const GLfloat, 4> params);
 
@@ -83,6 +90,9 @@ public:
 
     // Set active texture unit
     static void SetActiveTexture(GLint textureUnit);
+
+    // Retrieve pixel data from the texture buffer
+    void GetTextureData(GLint level, Format format, Data::Type type, void* pixels) const;
 
 protected:
     // Bind the specific target. Used by the Bind() method in derived classes
@@ -276,6 +286,9 @@ enum class TextureObject::ParameterInt : GLenum
 {
     BaseLevel = GL_TEXTURE_BASE_LEVEL,
     MaxLevel = GL_TEXTURE_MAX_LEVEL,
+    InternalFormat = GL_TEXTURE_INTERNAL_FORMAT,
+    Width = GL_TEXTURE_WIDTH,
+    Height = GL_TEXTURE_HEIGHT,
 };
 
 enum class TextureObject::ParameterEnum : GLenum

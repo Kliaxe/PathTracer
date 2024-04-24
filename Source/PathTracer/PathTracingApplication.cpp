@@ -32,6 +32,8 @@ PathTracingApplication::PathTracingApplication()
     , m_denoised(false)
     , m_denoiseProgress(0.0f)
     , m_denoiserEnabled(false)
+    , m_debugValueA(0.0f)
+    , m_debugValueB(0.0f)
     , m_renderer(GetDevice())
 {
     // OpenGL Extension Control
@@ -98,6 +100,8 @@ void PathTracingApplication::Update()
     m_pathTracingMaterial->SetUniformValue("InvProjMatrix", glm::inverse(camera.GetProjectionMatrix()));
     m_pathTracingMaterial->SetUniformValue("FrameCount", m_frameCount);
     m_pathTracingMaterial->SetUniformValue("FrameDimensions", glm::vec2((float)width, (float)height));
+    m_pathTracingMaterial->SetUniformValue("DebugValueA", m_debugValueA);
+    m_pathTracingMaterial->SetUniformValue("DebugValueB", m_debugValueB);
 }
 
 void PathTracingApplication::Render()
@@ -144,9 +148,10 @@ void PathTracingApplication::InvalidateScene()
 
 void PathTracingApplication::InitializeHDRI()
 {
-    Texture2DLoader textureLoader(TextureObject::FormatRGBA, TextureObject::InternalFormatRGBA32F);
-    //m_HDRI = textureLoader.LoadShared("Content/HDRI/Meadow.hdr");
-    m_HDRI = textureLoader.LoadShared("Content/HDRI/SymmetricalGarden.hdr");
+    m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/BrownPhotostudio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    //m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/ChineseGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    //m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/Meadow.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    //m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/SymmetricalGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
 }
 
 void PathTracingApplication::InitializeModel()
@@ -209,25 +214,28 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Cone.glb"));
     //m_models.push_back(loader.Load("Content/Models/Cube.glb"));
     //m_models.push_back(loader.Load("Content/Models/Dragon.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Floor.glb"));
     //m_models.push_back(loader.Load("Content/Models/Icosphere.glb"));
     //m_models.push_back(loader.Load("Content/Models/Plane.glb"));
     //m_models.push_back(loader.Load("Content/Models/Sphere.glb"));
     //m_models.push_back(loader.Load("Content/Models/Teapot.glb"));
     //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
 
-    Model model = loader.Load("Content/Models/Bunny.glb");
-    //Model model = loader.Load("Content/Models/sphere.glb");
+    {
+        Material::MaterialAttributes bunnyMaterialAttributes{ };
+        bunnyMaterialAttributes.baseColor = glm::vec3(252.0f / 255.0f, 186.0f / 255.0f, 3.0f / 255.0f);
+        bunnyMaterialAttributes.roughness = 0.1f;
+        //bunnyMaterialAttributes.metallic = 1.0f;
+        //bunnyMaterialAttributes.subsurface = 2.0f;
 
-    Material::MaterialAttributes bunnyMaterialAttributes{ };
-    bunnyMaterialAttributes.baseColor = glm::vec3(252.0f / 255.0f, 186.0f / 255.0f, 3.0f / 255.0f);
-    bunnyMaterialAttributes.roughness = 0.1f;
-    bunnyMaterialAttributes.metallic = 1.0f;
+        Model model = loader.Load("Content/Models/Bunny.glb");
 
-    std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(model.GetMaterial(0));
-    bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
-    model.SetMaterial(0, bunnyMaterial);
+        std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(model.GetMaterial(0));
+        bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
+        model.SetMaterial(0, bunnyMaterial);
 
-    m_models.push_back(model);
+        m_models.push_back(model);
+    }
 }
 
 void PathTracingApplication::InitializeCamera()
@@ -385,6 +393,9 @@ void PathTracingApplication::RenderGUI()
         changed |= ImGui::Button("Invalidate Scene");
         ImGui::Spacing();
         changed |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
+        ImGui::Spacing();
+        /* changed |= */ ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 1.0f);
+        /* changed |= */ ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 1.0f);
     }
 
     if (changed)

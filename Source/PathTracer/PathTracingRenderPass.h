@@ -42,6 +42,8 @@ private:
     template<typename T>
     std::vector<T> FlattenVector(const std::vector<std::vector<T>>& nestedVector);
 
+    std::shared_ptr<Texture2DObject> CalculateHDRICache(std::shared_ptr<Texture2DObject> HDRI, int& width, int& height);
+
 private:
     // Materials
     std::shared_ptr<Material> m_pathTracingMaterial;
@@ -97,11 +99,18 @@ private:
         glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
     };
 
+private:
+    struct alignas(16) SettingsAlign
+    {
+        float debugValueA;
+        float debugValueB;
+    };
+
     struct alignas(16) EnvironmentAlign
     {
         GLuint64 HDRIHandle;
-        float skyRotationCos;
-        float skyRotationSin;
+        GLuint64 HDRICacheHandle;
+        alignas(16) unsigned int HDRIResolution;
     };
 
     struct alignas(16) MaterialAlign
@@ -147,15 +156,20 @@ private:
     glm::vec3* m_denoiserRenderInputPtr;
     glm::vec3* m_denoiserRenderOutputPtr;
 
-    // Bindless handles
-    GLuint64 m_HDRIHandle;
-
     // Saved materials
     std::vector<MaterialSave> m_materialsSaved;
 
+    // Textures
+    std::shared_ptr<Texture2DObject> m_HDRICache;
+
+    // Bindless texture handles
+    GLuint64 m_HDRIHandle;
+    GLuint64 m_HDRICacheHandle;
+
     // SSBOs
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboMaterials;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboSettings;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboEnvironment;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboMaterials;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHNodes;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHPrimitives;
 };

@@ -50,6 +50,9 @@ public:
 
     const bool GetDenoiserEnabled() const { return m_denoiserEnabled; }
 
+    const float GetDebugValueA() const { return m_debugValueA; }
+    const float GetDebugValueB() const { return m_debugValueB; }
+
     const std::shared_ptr<Texture2DObject> GetHDRI() { return m_HDRI; }
 
     const std::vector<Model> GetModels() const { return m_models; }
@@ -82,6 +85,10 @@ private:
 
     // Denoiser enabled for the rendered image
     bool m_denoiserEnabled;
+
+    // Settings
+    float m_debugValueA;
+    float m_debugValueB;
 
     // HDRI texture
     std::shared_ptr<Texture2DObject> m_HDRI;

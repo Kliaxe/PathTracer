@@ -24,21 +24,28 @@ uniform mat4 ProjMatrix;
 uniform mat4 InvProjMatrix;
 uniform uint FrameCount;
 uniform vec2 FrameDimensions;
+uniform float DebugValueA;
+uniform float DebugValueB;
 
 uniform sampler2D PreviousPathTracingTexture;
 
 // --------------------------------------------------------
 
+struct Settings
+{
+	float debugValueA;
+	float debugValueB;
+};
+
 struct Environment
 {
 	uint64_t HDRI;
-	float skyRotationCos;
-    float skyRotationSin;
+	uint64_t HDRICache;
+	uint HDRIResolution;
 };
 
 struct Material
 {
-	// Texture handles
     uint64_t BaseColorTextureHandle;
     uint64_t NormalTextureHandle;
     uint64_t SpecularTextureHandle;
@@ -52,7 +59,6 @@ struct Material
     uint64_t TransmissionTextureHandle;
     uint64_t EmissiveTextureHandle;
 
-    // Attributes
     vec3 baseColor;
     float specular;
     vec3 specularColor;
@@ -96,22 +102,27 @@ struct BVHPrimitive
 
 // --------------------------------------------------------
 
-layout(std430, binding = 0) readonly buffer EnvironmentBuffer
+layout(std430, binding = 0) readonly buffer SettingsBuffer
+{
+    Settings settings;
+};
+
+layout(std430, binding = 1) readonly buffer EnvironmentBuffer
 {
     Environment environment;
 };
 
-layout(std430, binding = 1) readonly buffer MaterialBuffer
+layout(std430, binding = 2) readonly buffer MaterialBuffer
 {
     Material materials[];
 };
 
-layout(std430, binding = 2) readonly buffer BVHNodeBuffer
+layout(std430, binding = 3) readonly buffer BVHNodeBuffer
 {
     BVHNode BVHNodes[];
 };
 
-layout(std430, binding = 3) readonly buffer BVHPrimitiveBuffer
+layout(std430, binding = 4) readonly buffer BVHPrimitiveBuffer
 {
     BVHPrimitive BVHPrimitives[];
 };
@@ -565,39 +576,19 @@ float RandomValue(inout uint state)
 	return NextRandom(state) / 4294967295.0f; // 2^32 - 1
 }
 
-// Random value in normal distribution (with mean=0 and sd=1)
-float RandomValueNormalDistribution(inout uint state)
+vec2 RandomValueVec2(inout uint state)
 {
-	// Based on: https://stackoverflow.com/a/6178290
-	float theta = 2.0f * PI * RandomValue(state);
-	float rho = sqrt(-2.0f * log(RandomValue(state)));
-	return rho * cos(theta);
+	float R1 = RandomValue(state);
+	float R2 = RandomValue(state);
+	return vec2(R1, R2);
 }
 
-// Calculate a random direction
-vec3 RandomDirection(inout uint state)
+vec3 RandomValueVec3(inout uint state)
 {
-	// Based on: https://math.stackexchange.com/a/1585996
-	float x = RandomValueNormalDistribution(state);
-	float y = RandomValueNormalDistribution(state);
-	float z = RandomValueNormalDistribution(state);
-	return normalize(vec3(x, y, z));
-}
-
-// --------------------------------------------------------
-
-vec3 GetEnvironmentLight(Ray ray)
-{
-	vec3 V = ray.direction;
-
-	mat2x2 rot = mat2x2(
-		environment.skyRotationCos, -environment.skyRotationSin,
-		environment.skyRotationSin, environment.skyRotationCos
-	);
-	V.xz = V.xz * rot;
-
-	vec2 uv = (vec2(-atan(V.z, V.x) / PI, -V.y) + 1.0f) * 0.5f;
-	return texture(sampler2D(environment.HDRI), uv).rgb;
+	float R1 = RandomValue(state);
+	float R2 = RandomValue(state);
+	float R3 = RandomValue(state);
+	return vec3(R1, R2, R3);
 }
 
 // --------------------------------------------------------
@@ -751,23 +742,201 @@ vec3 HemispherepointCos(float u, float v)
 }
 
 // Get random hemisphere sample in world-space along the normal (uniform distribution)
-vec3 SampleHemisphereUniform(vec3 N, inout uint rngState)
+vec3 SampleHemisphereUniform(float u, float v, vec3 N)
 {
-	float u = RandomValue(rngState);
-	float v = RandomValue(rngState);
 	mat3 TBN = GetTangentSpace(N);
-
 	return TBN * HemispherepointUniform(u, v);
 }
 
 // Get random hemisphere sample in world-space along the normal (cosine-weighted distribution)
-vec3 SampleHemisphereCos(vec3 N, inout uint rngState)
+vec3 SampleHemisphereCos(float u, float v, vec3 N)
 {
-	float u = RandomValue(rngState);
-	float v = RandomValue(rngState);
 	mat3 TBN = GetTangentSpace(N);
-
 	return TBN * HemispherepointCos(u, v);
+}
+
+// GTR1 importance sampling
+vec3 SampleGTR1(vec2 Xi, vec3 V, vec3 N, float alpha)
+{
+	float phiH = 2.0f * PI * Xi.x;
+	float sinPhiH = sin(phiH);
+	float cosPhiH = cos(phiH);
+	
+	float cosThetaH = sqrt((1.0f - pow(alpha * alpha, 1.0f - Xi.y)) / (1.0f - alpha * alpha));
+	float sinThetaH = sqrt(max(0.0f, 1.0f - cosThetaH * cosThetaH));
+
+	// Sample the normal vector of the 'microfacet' as the half-angle vector h for specular reflection
+    vec3 H = vec3(sinThetaH * cosPhiH, sinThetaH * sinPhiH, cosThetaH);
+
+	// Project to normal hemisphere
+	mat3 TBN = GetTangentSpace(N);
+    H = TBN * H;
+
+    // Calculate the reflection direction based on "micro-normal"
+    vec3 L = reflect(-V, H);
+
+    return L;
+}
+
+// GTR2 importance sampling
+vec3 SampleGTR2(vec2 Xi, vec3 V, vec3 N, float alpha)
+{
+	float phiH = 2.0f * PI * Xi.x;
+	float sinPhiH = sin(phiH);
+	float cosPhiH = cos(phiH);
+	
+	float cosThetaH = sqrt((1.0f - Xi.y) / (1.0f + (alpha * alpha - 1.0f) * Xi.y));
+	float sinThetaH = sqrt(max(0.0f, 1.0f - cosThetaH * cosThetaH));
+	
+	// Sample the normal vector of the 'microfacet' as the half-angle vector h for specular reflection
+	vec3 H = vec3(sinThetaH * cosPhiH, sinThetaH * sinPhiH, cosThetaH);
+	
+	// Project to normal hemisphere
+	mat3 TBN = GetTangentSpace(N);
+	H = TBN * H;
+	
+    // Calculate the reflection direction based on "micro-normal"
+	vec3 L = reflect(-V, H);
+	
+    return L;
+}
+
+// Sample three BRDFs separately according to radiance distribution
+vec3 SampleBRDF(vec3 Xi, vec3 V, vec3 N, Material material)
+{
+	float alphaGTR1 = mix(0.1f, 0.001f, material.clearcoatRoughness);
+	float alphaGTR2 = max(0.001f, sqr(material.roughness));
+	
+	// Radiance Statistics
+    float rDiffuse = (1.0f - material.metallic);
+    float rSpecular = 1.0f;
+    float rClearcoat = 0.25f * material.clearcoat;
+    float rSum = rDiffuse + rSpecular + rClearcoat;
+
+    // Calculate probability based on radiance
+	float pDiffuse = rDiffuse / rSum;
+	float pSpecular = rSpecular / rSum;
+	float pClearcoat = rClearcoat / rSum;
+
+	// Sampling according to probability
+	float rd = Xi.z;
+
+	// Diffuse reflection
+	if(rd <= pDiffuse)
+	{
+		return SampleHemisphereCos(Xi.x, Xi.y, N);
+	}
+	
+	// Specular reflection
+	else if(pDiffuse < rd && rd <= pDiffuse + pSpecular)
+	{
+		return SampleGTR2(Xi.xy, V, N, alphaGTR2);
+	}
+
+    // Clearcoat
+    else if(pDiffuse + pSpecular < rd)
+	{
+        return SampleGTR1(Xi.xy, V, N, alphaGTR1);
+    }
+
+    return vec3(0.0f, 1.0f, 0.0f);
+}
+
+// Sample from the precomputed HDR cache
+vec3 SampleHDR(vec2 Xi)
+{
+	vec2 uv = texture(sampler2D(environment.HDRICache), Xi).rg; // x, y
+	uv.y = 1.0f - uv.y; // Flip
+
+	// Get angle
+	float phi = 2.0f * PI * (uv.x - 0.5f);	// [-pi ~ pi]
+	float theta = PI * (uv.y - 0.5f);		// [-pi/2 ~ pi/2]
+
+	// Calculate the direction in spherical coordinates
+	vec3 L = vec3(cos(theta) * cos(phi), sin(theta), cos(theta) * sin(phi));
+
+	return L;
+}
+
+// --------------------------------------------------------
+
+vec2 GetSphericalCoord(vec3 V)
+{
+//	return (vec2(-atan(V.z, V.x) / PI, -V.y) + 1.0f) * 0.5f;
+    vec2 uv = vec2(atan(V.z, V.x), asin(V.y));
+    uv /= vec2(2.0 * PI, PI);
+    uv += 0.5;
+    uv.y = 1.0 - uv.y;
+    return uv;
+}
+
+// Get HDR environment color
+vec3 GetHDRColor(vec3 L)
+{
+	vec2 uv = GetSphericalCoord(normalize(L));
+	return texture(sampler2D(environment.HDRI), uv).rgb;
+}
+
+// Get the probability density of the HDR at the position given the incoming light direction l
+// HDR resolution is 4096 * 2048, hence 4096 is the resolution
+float HDR_PDF(vec3 L)
+{
+	vec2 uv = GetSphericalCoord(normalize(L));
+	float pdf = texture(sampler2D(environment.HDRICache), uv).b; // Sample probability density
+	
+	float theta = PI * (0.5f - uv.y); // Range of theta [-pi/2 ~ pi/2]
+	float sinTheta = max(sin(theta), 1e10f);
+
+	// Conversion factor between spherical coordinates and image integration domain
+	float pConvert = float(environment.HDRIResolution * environment.HDRIResolution / 2) / (2.0f * PI * PI * sinTheta);
+
+	return pdf * pConvert;
+}
+
+float BRDF_PDF(vec3 V, vec3 N, vec3 L, Material material) 
+{
+    float NdotL = dot(N, L);
+    float NdotV = dot(N, V);
+    if(NdotL < 0.0f || NdotV < 0.0f) return 0.0f;
+
+    vec3 H = normalize(L + V);
+    float NdotH = dot(N, H);
+    float LdotH = dot(L, H);
+     
+    // Specular reflection - isotropic
+    float alpha = max(0.001f, sqr(material.roughness));
+    float Ds = GTR2(NdotH, alpha); 
+    float Dr = GTR1(NdotH, mix(0.1f, 0.001f, material.clearcoatRoughness));
+
+    // Calculate the probability density for each of the three types of BRDF separately
+    float pdfDiffuse = NdotL / PI;
+    float pdfSpecular = Ds * NdotH / (4.0f * dot(L, H));
+    float pdfClearcoat = Dr * NdotH / (4.0f * dot(L, H));
+
+    // Radiance statistics
+    float rDiffuse = (1.0 - material.metallic);
+    float rSpecular = 1.0;
+    float rClearcoat = 0.25 * material.clearcoat;
+    float rSum = rDiffuse + rSpecular + rClearcoat;
+
+    // Calculate the probability of selecting a sampling method based on radiance
+    float pDiffuse = rDiffuse / rSum;
+    float pSpecular = rSpecular / rSum;
+    float pClearcoat = rClearcoat / rSum;
+
+    // Mix PDFs based on probabilities
+    float pdf = pDiffuse   * pdfDiffuse 
+              + pSpecular  * pdfSpecular
+              + pClearcoat * pdfClearcoat;
+
+    pdf = max(1e-10f, pdf);
+    return pdf;
+}
+
+float misMixWeight(float a, float b)
+{
+	float t = a * a;
+	return t / (b * b + t);
 }
 
 // --------------------------------------------------------
@@ -776,61 +945,106 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 {
 	HitInfo hitInfo = primaryHit;
 
-	vec3 incomingLight = vec3(0.0f);
-	vec3 rayColor = vec3(1.0f);
+	vec3 energy	= vec3(0.0f); // Final color
+	vec3 result	= vec3(1.0f); // Recursively accumulated color
 
 	const uint MaxBounceCount = 3;
-	for (uint i = 0; i <= MaxBounceCount; i++)
+	for (uint bounce = 0; bounce <= MaxBounceCount; bounce++)
 	{
 		vec3 V = -hitInfo.hitDirection;
 		vec3 N = hitInfo.normal;
-		vec3 L = SampleHemisphereCos(N, rngState); // Random cos-weighted hemispheric direction
+		
+		Ray hdrRay;
+		hdrRay.origin = hitInfo.hitPoint;
 
-		float PDF = 1.0f / (2.0f * PI); // Hemispheric uniform sampling probability density
-		float cosine_o = max(0, dot(V, N)); // The cosine of the angle between the incident light and the normal
-		float cosine_i = max(0, dot(L, N)); // The cosine of the angle between the emergent light and the normal
+		vec2 lightXi = RandomValueVec2(rngState);
+		hdrRay.direction = SampleHDR(lightXi);
 
+		// Perform intersection test to check for occlusion
+		if (dot(N, hdrRay.direction) > 0.0f)
+		{
+			// Skip test if sampling direction is away from point p
+			HitInfo HDRHitInfo = HitBVH(hdrRay);
+
+			// Sky light accumulates brightness only when there are no occlusion
+			if (!HDRHitInfo.didHit)
+			{
+				// Get the following to acquire sampling direction L: 1 Light contribution, 2. The PDF of the 
+				// environment map at that location, 3. BRDF function value, 4. The PDF of the BRDF in that direction
+
+				// Light
+				vec3 L = hdrRay.direction;
+				vec3 color = GetHDRColor(L);
+				float pdfLight = HDR_PDF(L);
+
+				// BRDF
+				vec3 tangent;
+				vec3 bitangent;
+				GetTangentBitangent(N, tangent, bitangent);
+				vec3 f_r = BRDF_Evaluate(V, N, L, bitangent, tangent, hitInfo.material);
+				float pdfBRDF = BRDF_PDF(V, N, L, hitInfo.material);
+
+				// Multiple importance sampling
+				float misWeight = misMixWeight(pdfLight, pdfBRDF);
+				energy += misWeight * result * color * f_r * dot(N, L) / pdfLight;
+			}
+		}
+
+		// Sample BRDF to get a direction L
+		vec3 brdfXi = RandomValueVec3(rngState);
+		vec3 L = SampleBRDF(brdfXi, V, N, hitInfo.material);
+		
+		float NdotL = dot(N, L);
+		if (NdotL <= 0.0f) break;
+		
+		// Get tangent and bitangent
 		vec3 tangent;
 		vec3 bitangent;
 		GetTangentBitangent(N, tangent, bitangent);
 
+		// Obtain the BRDF value and probability density for the direction L
 		vec3 f_r = BRDF_Evaluate(V, N, L, bitangent, tangent, hitInfo.material);
+		float pdfBRDF = BRDF_PDF(V, N, L, hitInfo.material);
+		if (pdfBRDF <= 0.0f) break;
 
-		// Initialize new ray
+		// Initialize ray of light
 		ray.origin = hitInfo.hitPoint;
 		ray.direction = L;
-		
-		//if (dot(hitInfo.hitDirection, hitInfo.normal) <= 0)
-		//{
-		//	// Don't allow normal map to bend over the face normal more than 90 degrees to avoid light leaks
-		//	ray.origin += hitInfo.normal * 0.001f;
-		//}
-
 		hitInfo = HitBVH(ray);
 
+		// Missed - HDR light contribution
 		if (!hitInfo.didHit)
 		{
-			incomingLight += GetEnvironmentLight(ray) * rayColor * f_r * cosine_i / PDF;
+			vec3 color = GetHDRColor(L);
+			float pdfLight = HDR_PDF(L);
+
+			// Multiple importance sampling
+			float misWeight = misMixWeight(pdfBRDF, pdfLight);
+
+			// Indirect lighting rays are emitted according to BRDF distribution
+			energy += misWeight * result * color * f_r * NdotL / pdfBRDF;
+
 			break;
 		}
 
-		// Emissive Color
+		// Emissive contribution
 		vec3 emission = hitInfo.material.emissiveColor;
-		incomingLight += rayColor * emission * f_r * cosine_i / PDF;
+		energy += result * emission * f_r * NdotL / pdfBRDF;
 
-		// Cumulative Color
-		rayColor *= f_r * cosine_i / PDF;
+		// Accumulate result
+		result *= f_r * NdotL / pdfBRDF;
 
+		// Russion roulette
 		// Random early exit if ray colour is nearly 0 (can't contribute much to final result)
-		float p = max(rayColor.r, max(rayColor.g, rayColor.b));
+		float p = max(result.r, max(result.g, result.b));
 		if (RandomValue(rngState) >= p) 
 		{
 			break;
 		}
-		rayColor *= 1.0f / p;
+		result *= 1.0f / p;
 	}
 
-	return incomingLight;
+	return energy;
 }
 
 void main()
@@ -840,6 +1054,32 @@ void main()
 
 	uint pixelIndex = texelCoord.y * uint(FrameDimensions.x) + texelCoord.x;
 	uint rngState = pixelIndex + FrameCount * 719393;
+
+	// Debug HDRI Cache: Draw red dots on important source of light
+#if 0
+	vec3 hdrColor = texture(sampler2D(environment.HDRI), vec2(uv.x, -uv.y)).rgb;
+
+    // Sample points
+    for(uint i = 0u; i < 500u; i++)
+	{
+		uint XiState = i;
+		vec2 Xi = RandomValueVec2(XiState);
+
+        vec2 texcoord = texture(sampler2D(environment.HDRICache), Xi).rg;
+        texcoord.y = 1.0f - texcoord.y;
+
+		// Mark areas red that follow HDRI cache
+        if(distance(uv, texcoord) < 0.005f)
+		{
+			hdrColor = vec3(1.0f, 0.0f, 0.0f);
+		}
+    }
+
+	vec4 debugValue = vec4(hdrColor, 1.0f);
+
+	imageStore(imgOutput, texelCoord, debugValue);
+	return;
+#endif
 
 	// Start from transformed position
 	vec4 viewPos = InvProjMatrix * vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
@@ -851,7 +1091,7 @@ void main()
 	ray.origin = (inverse(ViewMatrix) * vec4(origin, 1)).xyz;
 	ray.direction = (inverse(ViewMatrix) * vec4(dir, 0)).xyz;
 
-	// Debug BVH
+	// Debug BVH: Count BVH node intersections on a given ray
 #if 0
 	vec3 debug = HitBVHDebug(ray);
 	vec4 debugValue = vec4(debug, 1.0f);
@@ -866,8 +1106,9 @@ void main()
 	// No reason to trace if we hit background the first time
 	if (!primaryHit.didHit)
 	{
-		// Sample Environment
-		result = GetEnvironmentLight(ray);
+		// Sample HDR
+		vec3 L = ray.direction;
+		result = GetHDRColor(L);
 	}
 	else
 	{
@@ -886,7 +1127,8 @@ void main()
 	
 	// Combine prev frame with current frame. Weight the contributions to result in an average over all frames.
 	float weight = 1.0f / FrameCount;
-	vec3 accumulatedColor = clamp(previousColor * (1 - weight) + currentColor * weight, 0.0f, 1.0f);
+	//vec3 accumulatedColor = clamp(previousColor * (1.0f - weight) + currentColor * weight, 0.0f, 1.0f);
+	vec3 accumulatedColor = previousColor * (1.0f - weight) + currentColor * weight;
 	
 	// Value
 	vec4 value = vec4(accumulatedColor, 1.0f);

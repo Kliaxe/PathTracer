@@ -190,6 +190,7 @@
     <ClCompile Include="Asset\TextureCubemapLoader.cpp" />
     <ClCompile Include="Asset\TextureLoader.cpp" />
     <ClCompile Include="Geometry\ShaderStorageBufferObject.cpp" />
+    <ClCompile Include="Utils\Timer.cpp" />
     <ClCompile Include="Utils\DearImGui.cpp" />
     <ClCompile Include="Texture\FramebufferObject.cpp" />
     <ClCompile Include="Geometry\Drawcall.cpp" />
@@ -247,6 +248,7 @@
     <ClInclude Include="Asset\TextureCubemapLoader.h" />
     <ClInclude Include="Asset\TextureLoader.h" />
     <ClInclude Include="Geometry\ShaderStorageBufferObject.h" />
+    <ClInclude Include="Utils\Timer.h" />
     <ClInclude Include="Utils\DearImGui.h" />
     <ClInclude Include="Texture\FramebufferObject.h" />
     <ClInclude Include="Geometry\Drawcall.h" />

@@ -52,6 +52,12 @@ void TextureObject::GetParameter(ParameterFloat pname, GLfloat& param) const
     glGetTexParameterfv(GetTarget(), static_cast<GLenum>(pname), &param);
 }
 
+void TextureObject::GetParameter(GLint level, ParameterFloat pname, GLfloat& param) const
+{
+    assert(IsBound());
+    glGetTexLevelParameterfv(GetTarget(), level, static_cast<GLenum>(pname), &param);
+}
+
 void TextureObject::SetParameter(ParameterFloat pname, GLfloat param)
 {
     assert(IsBound());
@@ -62,6 +68,12 @@ void TextureObject::GetParameter(ParameterInt pname, GLint& param) const
 {
     assert(IsBound());
     glGetTexParameteriv(GetTarget(), static_cast<GLenum>(pname), &param);
+}
+
+void TextureObject::GetParameter(GLint level, ParameterInt pname, GLint& param) const
+{
+    assert(IsBound());
+    glGetTexLevelParameteriv(GetTarget(), level, static_cast<GLenum>(pname), &param);
 }
 
 void TextureObject::SetParameter(ParameterInt pname, GLint param)
@@ -100,6 +112,12 @@ void TextureObject::GetParameter(ParameterColor pname, std::span<GLfloat, 4> par
     glGetTexParameterfv(GetTarget(), static_cast<GLenum>(pname), params.data());
 }
 
+void TextureObject::GetParameter(GLint level, ParameterColor pname, std::span<GLfloat, 4> params) const
+{
+    assert(IsBound());
+    glGetTexLevelParameterfv(GetTarget(), level, static_cast<GLenum>(pname), params.data());
+}
+
 void TextureObject::SetParameter(ParameterColor pname, std::span<const GLfloat, 4> params)
 {
     assert(IsBound());
@@ -110,6 +128,12 @@ GLuint64 TextureObject::GetBindlessTextureHandle()
 {
     Handle handle = GetHandle();
     return glGetTextureHandleARB(handle);
+}
+
+void TextureObject::GetTextureData(GLint level, Format format, Data::Type type, void* pixels) const
+{
+    assert(IsBound());
+    glGetTexImage(GetTarget(), level, format, (GLenum)type, pixels);
 }
 
 #ifndef NDEBUG

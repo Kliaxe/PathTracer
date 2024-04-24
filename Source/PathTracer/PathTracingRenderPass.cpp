@@ -13,7 +13,9 @@
 #include <iostream>
 #include <numeric>
 #include <span>
+#include <chrono>
 #include "BVH.h"
+#include "Utils/Timer.h"
 
 //#define DEBUG_VBO
 //#define DEBUG_EBO
@@ -21,6 +23,7 @@
 PathTracingRenderPass::PathTracingRenderPass(int width, int height, PathTracingApplication* pathTracingApplication, std::shared_ptr<Material> pathTracingMaterial, std::shared_ptr<const FramebufferObject> framebuffer)
     : RenderPass(framebuffer), m_width(width), m_height(height), m_pathTracingApplication(pathTracingApplication), m_pathTracingMaterial(pathTracingMaterial)
 {
+
     InitializeTextures();
     InitializeBuffers();
 
@@ -58,8 +61,10 @@ void PathTracingRenderPass::Render()
             glMakeTextureHandleResidentARB(materialSave.EmissiveTextureHandle);
         }
         glMakeTextureHandleResidentARB(m_HDRIHandle);
+        glMakeTextureHandleResidentARB(m_HDRICacheHandle);
         
         // Bind SSBO buffers
+        m_ssboSettings->Bind();
         m_ssboEnvironment->Bind();
         m_ssboMaterials->Bind();
         m_ssboBVHNodes->Bind();
@@ -100,6 +105,7 @@ void PathTracingRenderPass::Render()
             glMakeTextureHandleNonResidentARB(materialSave.EmissiveTextureHandle);
         }
         glMakeTextureHandleNonResidentARB(m_HDRIHandle);
+        glMakeTextureHandleNonResidentARB(m_HDRICacheHandle);
     }
     
     // Denoise
@@ -326,6 +332,46 @@ void PathTracingRenderPass::InitializeBuffers()
                 std::shared_ptr<Texture2DObject> normalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::NormalTexture);
                 if (normalTexture) { materialSave.NormalTextureHandle = normalTexture->GetBindlessTextureHandle(); }
 
+                // Specular Texture
+                std::shared_ptr<Texture2DObject> specularTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SpecularTexture);
+                if (specularTexture) { materialSave.SpecularTextureHandle = specularTexture->GetBindlessTextureHandle(); }
+
+                // Specular Color Texture
+                std::shared_ptr<Texture2DObject> specularColorTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SpecularColorTexture);
+                if (specularColorTexture) { materialSave.SpecularColorTextureHandle = specularColorTexture->GetBindlessTextureHandle(); }
+
+                // Metallic Roughness Texture
+                std::shared_ptr<Texture2DObject> metallicRoughnessTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::MetallicRoughnessTexture);
+                if (metallicRoughnessTexture) { materialSave.MetallicRoughnessTextureHandle = metallicRoughnessTexture->GetBindlessTextureHandle(); }
+
+                // Sheen Roughness Texture
+                std::shared_ptr<Texture2DObject> sheenRoughnessTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SheenRoughnessTexture);
+                if (sheenRoughnessTexture) { materialSave.SheenRoughnessTextureHandle = sheenRoughnessTexture->GetBindlessTextureHandle(); }
+
+                // Sheen Color Texture
+                std::shared_ptr<Texture2DObject> sheenColorTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SheenColorTexture);
+                if (sheenColorTexture) { materialSave.SheenColorTextureHandle = sheenColorTexture->GetBindlessTextureHandle(); }
+
+                // Clearcoat Texture
+                std::shared_ptr<Texture2DObject> clearcoatTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::ClearcoatTexture);
+                if (clearcoatTexture) { materialSave.ClearcoatTextureHandle = clearcoatTexture->GetBindlessTextureHandle(); }
+
+                // Clearcoat Roughness Texture
+                std::shared_ptr<Texture2DObject> clearcoatRoughnessTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::ClearcoatRoughnessTexture);
+                if (clearcoatRoughnessTexture) { materialSave.ClearcoatRoughnessTextureHandle = clearcoatRoughnessTexture->GetBindlessTextureHandle(); }
+
+                // Clearcoat Normal Texture
+                std::shared_ptr<Texture2DObject> clearcoatNormalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::ClearcoatNormalTexture);
+                if (clearcoatNormalTexture) { materialSave.ClearcoatNormalTextureHandle = clearcoatNormalTexture->GetBindlessTextureHandle(); }
+                
+                // Transmission Texture
+                std::shared_ptr<Texture2DObject> transmissionTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::TransmissionTexture);
+                if (transmissionTexture) { materialSave.TransmissionTextureHandle = transmissionTexture->GetBindlessTextureHandle(); }
+
+                // Emissive Texture
+                std::shared_ptr<Texture2DObject> emissiveTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::EmissiveTexture);
+                if (emissiveTexture) { materialSave.EmissiveTextureHandle = emissiveTexture->GetBindlessTextureHandle(); }
+
                 // Get material attributes
                 Material::MaterialAttributes materialAttributes = material.GetMaterialAttributes();
 
@@ -352,30 +398,63 @@ void PathTracingRenderPass::InitializeBuffers()
         }
     }
 
+    // Settings allocation
+    {
+        // Create SSBO for settings
+        m_ssboSettings = std::make_shared<ShaderStorageBufferObject>();
+        m_ssboSettings->Bind();
+
+        // Binding index
+        glBindBufferBase(m_ssboSettings->GetTarget(), 0, m_ssboSettings->GetHandle()); // Binding index: 0
+
+        // Parse settings
+        SettingsAlign settingsAlign{ };
+        settingsAlign.debugValueA = m_pathTracingApplication->GetDebugValueA();
+        settingsAlign.debugValueB = m_pathTracingApplication->GetDebugValueB();
+
+        // Convert to span
+        std::span<SettingsAlign> span = std::span(&settingsAlign, 1);
+
+        // Allocate
+        m_ssboSettings->AllocateData(span);
+        m_ssboSettings->Unbind();
+    }
+
     // Environment allocation
     {
+
         // Create SSBO for environment
         m_ssboEnvironment = std::make_shared<ShaderStorageBufferObject>();
         m_ssboEnvironment->Bind();
 
         // Binding index
-        glBindBufferBase(m_ssboEnvironment->GetTarget(), 0, m_ssboEnvironment->GetHandle()); // Binding index: 0
+        glBindBufferBase(m_ssboEnvironment->GetTarget(), 1, m_ssboEnvironment->GetHandle()); // Binding index: 1
 
-        // Get HDRI handle and save
+        // Get HDRI
         std::shared_ptr<Texture2DObject> HDRI = m_pathTracingApplication->GetHDRI();
-        const GLuint64 HDRIHandle = glGetTextureHandleARB(HDRI->GetHandle());
-        if (HDRIHandle == 0)
-        {
-            std::cerr << "Error! HDRI Handle returned null" << std::endl;
-            exit(-1);
-        }
+
+        // Calculate and save HDRI Cache
+        int HDRIWidth, HDRIHeight;
+        m_HDRICache = CalculateHDRICache(HDRI, HDRIWidth, HDRIHeight);
+
+        // Choose largest HDRI dimension
+        unsigned int HDRIResolution = std::max(HDRIWidth, HDRIHeight);
+
+        // Get HDRI handle
+        const GLuint64 HDRIHandle = HDRI->GetBindlessTextureHandle();
+        if (HDRIHandle == 0) { throw new std::runtime_error("Error! HDRI Handle returned null"); }
         m_HDRIHandle = HDRIHandle;
+
+        // Get HDRI Cache handle
+        const GLuint64 HDRICacheHandle = m_HDRICache->GetBindlessTextureHandle();
+        if (HDRICacheHandle == 0) { throw new std::runtime_error("Error! HDRI Cache Handle returned null"); }
+        m_HDRICacheHandle = HDRICacheHandle;
 
         // Environment
         EnvironmentAlign environment { };
         environment.HDRIHandle = HDRIHandle;
-        environment.skyRotationCos = 1.0f;
-        environment.skyRotationSin = 0.0f;
+        environment.HDRICacheHandle = HDRICacheHandle;
+        environment.HDRIResolution = HDRIResolution;
 
         // Convert to span
         std::span<EnvironmentAlign> span = std::span(&environment, 1);
@@ -392,7 +471,7 @@ void PathTracingRenderPass::InitializeBuffers()
         m_ssboMaterials->Bind();
 
         // Binding index
-        glBindBufferBase(m_ssboMaterials->GetTarget(), 1, m_ssboMaterials->GetHandle()); // Binding index: 1
+        glBindBufferBase(m_ssboMaterials->GetTarget(), 2, m_ssboMaterials->GetHandle()); // Binding index: 2
 
         // Convert to MaterialAlign for GPU consumption
 
@@ -489,7 +568,7 @@ void PathTracingRenderPass::InitializeBuffers()
             m_ssboBVHNodes->Bind();
 
             // Binding index
-            glBindBufferBase(m_ssboBVHNodes->GetTarget(), 2, m_ssboBVHNodes->GetHandle()); // Binding index: 2
+            glBindBufferBase(m_ssboBVHNodes->GetTarget(), 3, m_ssboBVHNodes->GetHandle()); // Binding index: 3
 
             // Initialize BVH nodes
             BVH::BVHNode InitNode{ };
@@ -531,7 +610,7 @@ void PathTracingRenderPass::InitializeBuffers()
             m_ssboBVHPrimitives->Bind();
 
             // Binding index
-            glBindBufferBase(m_ssboBVHPrimitives->GetTarget(), 3, m_ssboBVHPrimitives->GetHandle()); // Binding index: 3
+            glBindBufferBase(m_ssboBVHPrimitives->GetTarget(), 4, m_ssboBVHPrimitives->GetHandle()); // Binding index: 4
 
             // Align BVH primitives
             std::vector<BVH::BVHPrimitiveAlign> BVHPrimitivesAligned;
@@ -695,4 +774,153 @@ std::vector<T> PathTracingRenderPass::FlattenVector(const std::vector<std::vecto
     }
 
     return flattenedVector;
+}
+
+std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::shared_ptr<Texture2DObject> HDRI, int& width, int& height)
+{
+    // Bind texture
+    HDRI->Bind();
+
+    // Get the internal format of the texture
+    int internalFormat;
+    HDRI->GetParameter(0, TextureObject::ParameterInt::InternalFormat, internalFormat);
+
+    // Check if the texture is RGB and HDR
+    // The following code assumes 3 components of RGB...
+    if (internalFormat != GL_RGB32F)
+    {
+        throw new std::runtime_error("The HDRI does not follow the RGB32F format...");
+    }
+
+    // Get texture dimensions
+    HDRI->GetParameter(0, TextureObject::ParameterInt::Width, width);
+    HDRI->GetParameter(0, TextureObject::ParameterInt::Height, height);
+
+    // Retrieve the HDR texture data
+    std::vector<float> textureData(width * height * 3);
+    HDRI->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, textureData.data());
+    
+    // We're done retrieving information
+    HDRI->Unbind();
+
+    // Start timer
+    Timer timer("HDRI Cache");
+
+    float lumSum = 0.0f;
+
+    // Initialize a probability density function (pdf) of height h and width w, and calculate the total brightness
+    std::vector<std::vector<float>> pdf(height);
+    for (auto& line : pdf) line.resize(width);
+    for (int i = 0; i < height; i++)
+    {
+        for (int j = 0; j < width; j++)
+        {
+            int index = 3 * (i * width + j);
+            float R = textureData[index + 0];
+            float G = textureData[index + 1];
+            float B = textureData[index + 2];
+            float lum = 0.2f * R + 0.7f * G + 0.1f * B;
+            pdf[i][j] = lum;
+            lumSum += lum;
+        }
+    }
+
+    // Probability density normalization
+    for (int i = 0; i < height; i++)
+        for (int j = 0; j < width; j++)
+            pdf[i][j] /= lumSum;
+
+    // Accumulate each column to get the marginal probability density for x
+    std::vector<float> pdf_x_margin;
+    pdf_x_margin.resize(width);
+    for (int j = 0; j < width; j++)
+        for (int i = 0; i < height; i++)
+            pdf_x_margin[j] += pdf[i][j];
+
+    // Calculate the marginal distribution function for x
+    std::vector<float> cdf_x_margin = pdf_x_margin;
+    for (int i = 1; i < width; i++)
+        cdf_x_margin[i] += cdf_x_margin[i - 1];
+
+    // Calculate the conditional probability density function of y fixen X = x
+    std::vector<std::vector<float>> pdf_y_condiciton = pdf;
+    for (int j = 0; j < width; j++)
+        for (int i = 0; i < height; i++)
+            pdf_y_condiciton[i][j] /= pdf_x_margin[j];
+
+    // Calculate the conditional probability distribution function y given X = x
+    std::vector<std::vector<float>> cdf_y_condiciton = pdf_y_condiciton;
+    for (int j = 0; j < width; j++)
+        for (int i = 1; i < height; i++)
+            cdf_y_condiciton[i][j] += cdf_y_condiciton[i - 1][j];
+
+    // Transpose cdf_y_condiciton to store by columns
+    // cdf_y_condiciton[i] represetns the conditional probability distribution function for y given X = i
+    std::vector<std::vector<float>> temp = cdf_y_condiciton;
+    cdf_y_condiciton = std::vector<std::vector<float>>(width);
+    for (auto& line : cdf_y_condiciton) line.resize(height);
+    for (int j = 0; j < width; j++)
+        for (int i = 0; i < height; i++)
+            cdf_y_condiciton[j][i] = temp[i][j];
+
+    // Exhaustively compute samples for xy based on xi_1 and xi_2
+    // sample_x[i][j] represents the x value from (x,y), when xi_1=i/height and xi_2=j/width
+    // sample_y[i][j] represents the y value from (x,y) when xi_1=i/height and xi_2=j/width
+    // sample_p[i][j] represents the probability density when selecting point (i, j)
+    std::vector<std::vector<float>> sample_x(height);
+    for (auto& line : sample_x) line.resize(width);
+    std::vector<std::vector<float>> sample_y(height);
+    for (auto& line : sample_y) line.resize(width);
+    std::vector<std::vector<float>> sample_p(height);
+    for (auto& line : sample_p) line.resize(width);
+    for (int j = 0; j < width; j++)
+    {
+        for (int i = 0; i < height; i++)
+        {
+            float xi_1 = float(i) / height;
+            float xi_2 = float(j) / width;
+
+            // Use xi_1 to find the lower bound in cdf_x_margin to obtain sample x
+            int x = std::lower_bound(cdf_x_margin.begin(), cdf_x_margin.end(), xi_1) - cdf_x_margin.begin();
+            
+            // Use xi_2 to obtain the sample y given X = x
+            int y = std::lower_bound(cdf_y_condiciton[x].begin(), cdf_y_condiciton[x].end(), xi_2) - cdf_y_condiciton[x].begin();
+
+            // Store the texture coordinates xy and the probability density corresponding to the xy position
+            sample_x[i][j] = float(x) / width;
+            sample_y[i][j] = float(y) / height;
+            sample_p[i][j] = pdf[i][j];
+        }
+    }
+
+    // Integrate the results into the texture
+    // The R and G channels store the sample (x,y), while the B channel stores the probability density pdf(i, j)
+    float* cache = new float[width * height * 3];
+    for (int i = 0; i < height; i++)
+    {
+        for (int j = 0; j < width; j++)
+        {
+            cache[3 * (i * width + j) + 0] = sample_x[i][j]; // R
+            cache[3 * (i * width + j) + 1] = sample_y[i][j]; // G
+            cache[3 * (i * width + j) + 2] = sample_p[i][j]; // B
+        }
+    }
+
+    // End time point in milliseconds and print
+    timer.Stop();
+    timer.Print();
+
+    // Translate to span of bytes
+    std::span<const float> dataSpanFloat(cache, width * height * 3);
+    std::span<const std::byte> data = Data::GetBytes(dataSpanFloat);
+
+    // Create HDRICache texture
+    std::shared_ptr<Texture2DObject> HDRICache = std::make_shared<Texture2DObject>();
+    HDRICache->Bind();
+    HDRICache->SetImage(0, width, height, TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F, data, Data::Type::Float);
+    HDRICache->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_LINEAR);
+    HDRICache->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_LINEAR);
+    HDRICache->Unbind();
+
+    return HDRICache;
 }
