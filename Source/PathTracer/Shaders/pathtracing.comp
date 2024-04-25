@@ -10,24 +10,34 @@ layout(rgba32f, binding = 0) uniform image2D imgOutput;
 
 // --------------------------------------------------------
 
-const float PI = 3.1415926f;
-const float FLT_MAX = 3.402823466e+38f;
-
-// --------------------------------------------------------
-
-#define BVH_STACKSIZE 16
-
-// --------------------------------------------------------
-
 uniform mat4 ViewMatrix;
 uniform mat4 ProjMatrix;
 uniform mat4 InvProjMatrix;
 uniform uint FrameCount;
 uniform vec2 FrameDimensions;
+uniform float FocalLength;
+uniform float ApertureSize;
+uniform vec2 ApertureShape;
 uniform float DebugValueA;
 uniform float DebugValueB;
 
 uniform sampler2D PreviousPathTracingTexture;
+
+// --------------------------------------------------------
+
+const float PI = 3.1415926f;
+const float FLT_MAX = 3.402823466e+38f;
+
+#define BVH_STACKSIZE 16
+
+// --------------------------------------------------------
+
+//#define DEBUG_HDRI_CACHE
+//#define DEBUG_BVH
+
+#if defined(DEBUG_HDRI_CACHE) || defined(DEBUG_BVH)
+#define DEBUG_ENABLED
+#endif
 
 // --------------------------------------------------------
 
@@ -1053,16 +1063,66 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 	return radiance;
 }
 
-void main()
+// --------------------------------------------------------
+
+// Generate primary ray using pinhole camera
+Ray GeneratePinholeCameraRay(vec2 uv)
 {
-	ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
-	vec2 uv = (texelCoord + 0.5f) / FrameDimensions;
+	// Start from transformed position
+	vec4 viewPos = InvProjMatrix * vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
+	vec3 origin = viewPos.xyz / viewPos.w;
+	vec3 direction = normalize(origin); // Normalize to get view direction
 
-	uint pixelIndex = texelCoord.y * uint(FrameDimensions.x) + texelCoord.x;
-	uint rngState = pixelIndex + FrameCount * 719393;
+	// Compute origin and direction based on view matrix
+	Ray ray;
+	ray.origin = (inverse(ViewMatrix) * vec4(origin, 1)).xyz;
+	ray.direction = (inverse(ViewMatrix) * vec4(direction, 0)).xyz;
 
-	// Debug HDRI Cache: Draw red dots on important sources of light
-#if 0
+	return ray;
+}
+
+// Generate primary ray using thin lens model
+Ray GenerateThinLensCameraRay(vec2 uv, inout uint rngState)
+{
+	// Extract camera vectors from view matrix
+	vec3 cameraForward = -vec3(ViewMatrix[2][0], ViewMatrix[2][1], ViewMatrix[2][2]);
+	vec3 cameraUp = vec3(ViewMatrix[1][0], ViewMatrix[1][1], ViewMatrix[1][2]);
+	vec3 cameraRight = cross(cameraUp, cameraForward);
+
+	// Find first point in distance at which we want perfect focus
+	Ray ray = GeneratePinholeCameraRay(uv);
+	vec3 focalPoint = ray.origin + ray.direction * FocalLength;
+
+	// Sample aperture shape
+	vec2 apertureSample = HemispherepointCos(RandomValue(rngState), RandomValue(rngState)).xy * ApertureShape * ApertureSize;
+
+	// Jitter the ray origin within camera plane using aperture sample	
+	ray.origin = ray.origin + cameraRight * apertureSample.x + cameraUp * apertureSample.y;
+
+	// Set ray direction from jittered origin towards the focal point
+	ray.direction = normalize(focalPoint - ray.origin);
+
+	return ray;
+}
+
+// Generates primary ray using either pinhole or thin lens model
+Ray GeneratePrimaryRay(vec2 uv, inout uint rngState)
+{
+	if (ApertureSize == 0.0f)
+	{
+		return GeneratePinholeCameraRay(uv);
+	}
+	else
+	{
+		return GenerateThinLensCameraRay(uv, rngState);
+	}
+}
+
+// --------------------------------------------------------
+
+// Debug HDRI Cache: Draw red dots on important sources of light
+vec4 DebugHDRICache(vec2 uv)
+{
 	vec3 hdrColor = texture(sampler2D(environment.HDRI), vec2(uv.x, -uv.y)).rgb;
 
     // Sample points
@@ -1081,31 +1141,52 @@ void main()
 		}
     }
 
-	vec4 debugValue = vec4(hdrColor, 1.0f);
+	return vec4(hdrColor, 1.0f);
+}
+
+// Debug BVH: Count BVH node intersections on a given ray
+vec4 DebugBVH(Ray debugRay)
+{
+	vec3 bvhColor = HitBVHDebug(debugRay);
+	return vec4(bvhColor, 1.0f);
+}
+
+// Choose debug output function
+vec4 DebugOutput(vec2 uv, Ray debugRay)
+{
+#if defined(DEBUG_HDRI_CACHE)
+	return DebugHDRICache(uv);
+#elif defined(DEBUG_BVH)
+	return DebugBVH(debugRay);
+#endif
+	return vec4(0.0f);
+}
+
+// --------------------------------------------------------
+
+void main()
+{
+	// Initialize pixel coordinate information
+	ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+	vec2 uv = (texelCoord + 0.5f) / FrameDimensions;
+
+	// Initialize rng state
+	uint pixelIndex = texelCoord.y * uint(FrameDimensions.x) + texelCoord.x;
+	uint rngState = pixelIndex + FrameCount * 719393;
+
+	// Debug: Output meaningful data for analysis
+#if defined(DEBUG_ENABLED)
+	Ray debugRay = GeneratePinholeCameraRay(uv);
+	vec4 debugValue = DebugOutput(uv, debugRay);
 
 	imageStore(imgOutput, texelCoord, debugValue);
 	return;
 #endif
 
-	// Start from transformed position
-	vec4 viewPos = InvProjMatrix * vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
-	vec3 origin = viewPos.xyz / viewPos.w;
-	vec3 dir = normalize(origin); // Normalize to get view direction
+	// Initialize primary ray
+	Ray ray = GeneratePrimaryRay(uv, rngState);
 
-	// Ray
-	Ray ray;
-	ray.origin = (inverse(ViewMatrix) * vec4(origin, 1)).xyz;
-	ray.direction = (inverse(ViewMatrix) * vec4(dir, 0)).xyz;
-
-	// Debug BVH: Count BVH node intersections on a given ray
-#if 0
-	vec3 debug = HitBVHDebug(ray);
-	vec4 debugValue = vec4(debug, 1.0f);
-
-	imageStore(imgOutput, texelCoord, debugValue);
-	return;
-#endif
-
+	// Generate primary hit information
 	HitInfo primaryHit = HitBVH(ray);
 	vec3 result;
 
@@ -1119,19 +1200,14 @@ void main()
 	else
 	{
 		// PathTrace 
-		vec3 totalRadiance = vec3(0.0f);
-		const uint NumRaysPerPixel = 1;
-		for (uint rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
-		{
-			totalRadiance += PathTrace(primaryHit, ray, rngState);
-		}
-		result = totalRadiance / float(NumRaysPerPixel);
+		result = PathTrace(primaryHit, ray, rngState);
 	}
 
+	// Current state
 	vec3 currentColor = result;
 	vec3 previousColor = texelFetch(PreviousPathTracingTexture, texelCoord, 0).rgb;
 	
-	// Combine prev frame with current frame. Weight the contributions to result in an average over all frames.
+	// Temporal accumulation. Weigh the contributions to result in an average over all frames.
 	float weight = 1.0f / FrameCount;
 	vec3 accumulatedColor = previousColor * (1.0f - weight) + currentColor * weight;
 	

@@ -87,6 +87,9 @@ private:
     bool m_denoiserEnabled;
 
     // Settings
+    float m_focalLength = 3.5f; // Controls the Depth of Field's focus distance
+    float m_apertureSize = 0.0f; // Controls the Depth of Field's strength
+    glm::vec2 m_apertureShape = glm::vec2(1.0f, 1.0f); // Controls Depth of Field's bokeh shape
     float m_debugValueA;
     float m_debugValueB;
 

@@ -100,6 +100,9 @@ void PathTracingApplication::Update()
     m_pathTracingMaterial->SetUniformValue("InvProjMatrix", glm::inverse(camera.GetProjectionMatrix()));
     m_pathTracingMaterial->SetUniformValue("FrameCount", m_frameCount);
     m_pathTracingMaterial->SetUniformValue("FrameDimensions", glm::vec2((float)width, (float)height));
+    m_pathTracingMaterial->SetUniformValue("FocalLength", m_focalLength);
+    m_pathTracingMaterial->SetUniformValue("ApertureSize", m_apertureSize);
+    m_pathTracingMaterial->SetUniformValue("ApertureShape", m_apertureShape);
     m_pathTracingMaterial->SetUniformValue("DebugValueA", m_debugValueA);
     m_pathTracingMaterial->SetUniformValue("DebugValueB", m_debugValueB);
 }
@@ -214,7 +217,7 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Cone.glb"));
     //m_models.push_back(loader.Load("Content/Models/Cube.glb"));
     //m_models.push_back(loader.Load("Content/Models/Dragon.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Floor.glb"));
+    m_models.push_back(loader.Load("Content/Models/Floor.glb"));
     //m_models.push_back(loader.Load("Content/Models/Icosphere.glb"));
     //m_models.push_back(loader.Load("Content/Models/Plane.glb"));
     //m_models.push_back(loader.Load("Content/Models/Sphere.glb"));
@@ -397,8 +400,13 @@ void PathTracingApplication::RenderGUI()
         ImGui::Spacing();
         changed |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
         ImGui::Spacing();
-        changed |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 1.0f);
-        changed |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 1.0f);
+
+        changed |= ImGui::SliderFloat("Focal Length", (float*)(&m_focalLength), 0.0f, 15.0f);
+        changed |= ImGui::SliderFloat("Aperture Size", (float*)(&m_apertureSize), 0.0f, 1.0f);
+        changed |= ImGui::SliderFloat2("Aperture Shape", (float*)(&m_apertureShape), 0.0f, 1.0f);
+
+        changed |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 25.0f);
+        changed |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 25.0f);
     }
 
     if (changed)
