@@ -6,7 +6,9 @@
 
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(rgba32f, binding = 0) uniform image2D imgOutput;
+layout(rgba32f, binding = 0) uniform image2D primaryBaseColorOutput;
+layout(rgba32f, binding = 1) uniform image2D primaryNormalOutput;
+layout(rgba32f, binding = 2) uniform image2D accumulationOutput;
 
 // --------------------------------------------------------
 
@@ -21,7 +23,7 @@ uniform vec2 ApertureShape;
 uniform float DebugValueA;
 uniform float DebugValueB;
 
-uniform sampler2D PreviousPathTracingTexture;
+uniform sampler2D PreviousAccumulationTexture;
 
 // --------------------------------------------------------
 
@@ -852,8 +854,8 @@ vec3 SampleBRDF(vec3 Xi, vec3 V, vec3 N, Material material)
     return vec3(0.0f, 1.0f, 0.0f);
 }
 
-// Sample from the precomputed HDR cache
-vec3 SampleHDR(vec2 Xi)
+// Sample from the precomputed HDRI cache
+vec3 SampleHDRI(vec2 Xi)
 {
 	vec2 uv = texture(sampler2D(environment.HDRICache), Xi).rg; // x, y
 	uv.y = 1.0f - uv.y; // Flip
@@ -879,14 +881,14 @@ vec2 GetSphericalCoord(vec3 V)
     return uv;
 }
 
-// Get HDR environment color
-vec3 EvaluationHDR(vec3 L)
+// Get HDRI environment color
+vec3 EvaluationHDRI(vec3 L)
 {
 	vec2 uv = GetSphericalCoord(normalize(L));
 	return texture(sampler2D(environment.HDRI), uv).rgb;
 }
 
-// Get the probability density of the HDR at the position given the incoming light direction l
+// Get the probability density of the HDRI at the position given the incoming light direction l
 float ProbabilityDensityHDRI(vec3 L)
 {
 	vec2 uv = GetSphericalCoord(normalize(L));
@@ -962,27 +964,27 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 		vec3 V = -hitInfo.hitDirection;
 		vec3 N = hitInfo.normal;
 		
-		Ray hdrRay;
-		hdrRay.origin = hitInfo.hitPoint;
+		Ray hdriRay;
+		hdriRay.origin = hitInfo.hitPoint;
 
 		vec2 lightXi = RandomValueVec2(rngState);
-		hdrRay.direction = SampleHDR(lightXi);
+		hdriRay.direction = SampleHDRI(lightXi);
 
 		// Perform intersection test to check for occlusion
-		if (dot(N, hdrRay.direction) > 0.0f)
+		if (dot(N, hdriRay.direction) > 0.0f)
 		{
 			// Skip test if sampling direction is away from point p
-			HitInfo HDRHitInfo = HitBVH(hdrRay);
+			HitInfo hdriHitInfo = HitBVH(hdriRay);
 
 			// Sky light accumulates brightness only when there are no occlusion
-			if (!HDRHitInfo.didHit)
+			if (!hdriHitInfo.didHit)
 			{
 				// Get the following to acquire sampling direction L: 1 Light contribution, 2. The PDF of the 
 				// environment map at that location, 3. BRDF function value, 4. The PDF of the BRDF in that direction
 
 				// Light
-				vec3 L = hdrRay.direction;
-				vec3 color = EvaluationHDR(L);
+				vec3 L = hdriRay.direction;
+				vec3 colorLight = EvaluationHDRI(L);
 				float pdfLight = ProbabilityDensityHDRI(L);
 
 				// BRDF
@@ -998,7 +1000,7 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 					float misWeight = misMixWeight(pdfLight, pdfBRDF);
 					if (misWeight > 0.0f)
 					{
-						radiance += misWeight * throughput * color * f * dot(N, L) / pdfLight;
+						radiance += misWeight * throughput * colorLight * f * dot(N, L) / pdfLight;
 					}
 				}
 			}
@@ -1026,10 +1028,10 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 		ray.direction = L;
 		hitInfo = HitBVH(ray);
 
-		// Missed - HDR light contribution
+		// Missed - HDRI light contribution
 		if (!hitInfo.didHit)
 		{
-			vec3 color = EvaluationHDR(L);
+			vec3 colorLight = EvaluationHDRI(L);
 			float pdfLight = ProbabilityDensityHDRI(L);
 
 			// Multiple importance sampling
@@ -1037,7 +1039,7 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 			if (misWeight > 0.0f)
 			{
 				// Indirect lighting rays are emitted according to BRDF distribution
-				radiance += misWeight * throughput * color * f * NdotL / pdfBRDF;
+				radiance += misWeight * throughput * colorLight * f * NdotL / pdfBRDF;
 			}
 
 			break;
@@ -1123,7 +1125,7 @@ Ray GeneratePrimaryRay(vec2 uv, inout uint rngState)
 // Debug HDRI Cache: Draw red dots on important sources of light
 vec4 DebugHDRICache(vec2 uv)
 {
-	vec3 hdrColor = texture(sampler2D(environment.HDRI), vec2(uv.x, -uv.y)).rgb;
+	vec3 hdriColor = texture(sampler2D(environment.HDRI), vec2(uv.x, -uv.y)).rgb;
 
     // Sample points
     for(uint i = 0u; i < 500u; i++)
@@ -1137,11 +1139,11 @@ vec4 DebugHDRICache(vec2 uv)
 		// Mark areas red that follow HDRI cache
         if(distance(uv, texcoord) < 0.005f)
 		{
-			hdrColor = vec3(1.0f, 0.0f, 0.0f);
+			hdriColor = vec3(1.0f, 0.0f, 0.0f);
 		}
     }
 
-	return vec4(hdrColor, 1.0f);
+	return vec4(hdriColor, 1.0f);
 }
 
 // Debug BVH: Count BVH node intersections on a given ray
@@ -1188,30 +1190,43 @@ void main()
 
 	// Generate primary hit information
 	HitInfo primaryHit = HitBVH(ray);
-	vec3 result;
+
+	vec3 result = vec3(0.0f);
+	vec3 primaryBaseColor = vec3(0.0f);
+	vec3 primaryNormal = vec3(0.0f);
 
 	// No reason to trace if we hit background the first time
 	if (!primaryHit.didHit)
 	{
-		// Sample HDR
+		// Sample HDRI
 		vec3 L = ray.direction;
-		result = EvaluationHDR(L);
+		result = EvaluationHDRI(L);
 	}
 	else
 	{
 		// PathTrace 
 		result = PathTrace(primaryHit, ray, rngState);
+
+		// Fetch denoiser essentials
+		primaryBaseColor = primaryHit.material.baseColor;
+		primaryNormal = primaryHit.normal;
 	}
 
 	// Current state
 	vec3 currentColor = result;
-	vec3 previousColor = texelFetch(PreviousPathTracingTexture, texelCoord, 0).rgb;
+	vec3 previousColor = texelFetch(PreviousAccumulationTexture, texelCoord, 0).rgb;
 	
 	// Temporal accumulation. Weigh the contributions to result in an average over all frames.
 	float weight = 1.0f / FrameCount;
 	vec3 accumulatedColor = previousColor * (1.0f - weight) + currentColor * weight;
 	
 	// Value
-	vec4 value = vec4(accumulatedColor, 1.0f);
-	imageStore(imgOutput, texelCoord, value);
+	vec4 primaryBaseColorValue = vec4(primaryBaseColor, 1.0f);
+	vec4 primaryNormalValue = vec4(primaryNormal, 1.0f);
+	vec4 accumulationValue = vec4(accumulatedColor, 1.0f);
+
+	// Output
+	imageStore(primaryBaseColorOutput, texelCoord, primaryBaseColorValue);
+	imageStore(primaryNormalOutput, texelCoord, primaryNormalValue);
+	imageStore(accumulationOutput, texelCoord, accumulationValue);
 }

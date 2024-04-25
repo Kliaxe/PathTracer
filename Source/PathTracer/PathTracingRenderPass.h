@@ -49,8 +49,10 @@ private:
     std::shared_ptr<Material> m_pathTracingMaterial;
 
     // Textures
-    std::shared_ptr<Texture2DObject> m_pathTracingRenderTexture;
-    std::shared_ptr<Texture2DObject> m_denoisedPathTracingRenderTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryBaseColorTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryNormalTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingAccumulationTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingDenoisedAccumulationTexture;
     std::shared_ptr<Texture2DObject> m_outputTexture;
 
     // Framebuffers
@@ -153,8 +155,10 @@ private:
     PathTracingApplication* m_pathTracingApplication;
 
     // Denoiser data
-    glm::vec3* m_denoiserRenderInputPtr;
-    glm::vec3* m_denoiserRenderOutputPtr;
+    glm::vec3* m_denoiserAccumulationInputPtr;
+    glm::vec3* m_denoiserPrimaryBaseColorInputPtr;
+    glm::vec3* m_denoiserPrimaryNormalInputPtr;
+    glm::vec3* m_denoiserDenoisedAccumulationOutputPtr;
 
     // Saved materials
     std::vector<MaterialSave> m_materialsSaved;
