@@ -184,7 +184,7 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     //        }
     //        break;
     //    case MaterialProperty::DiffuseTexture:
-    //        LoadTexture(materialData, aiTextureType_DIFFUSE, *material, location, Material::MaterialTextureSlot::BaseColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    //        LoadTexture(materialData, aiTextureType_DIFFUSE, *material, location, Material::MaterialTextureSlot::AlbedoTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
     //        break;
     //    case MaterialProperty::NormalTexture:
     //        LoadTexture(materialData, aiTextureType_NORMALS, *material, location, Material::MaterialTextureSlot::NormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
@@ -197,8 +197,8 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
 
     // Load textures to material 
 
-    // Base Color Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_BASE_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::BaseColorTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
+    // Albedo Texture
+    LoadMaterialTexture(materialData, AI_MATKEY_BASE_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::AlbedoTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
     
     // Normal Texture
     LoadMaterialTexture(materialData, aiTextureType_NORMALS, 0, *material, Material::MaterialTextureSlot::NormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
@@ -240,8 +240,8 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     float value;
     aiColor3D color;
     
-    // Base Color
-    if (materialData.Get(AI_MATKEY_BASE_COLOR, color) == aiReturn_SUCCESS) { materialAttributes.baseColor = glm::vec3(color.r, color.g, color.b); }
+    // Albedo
+    if (materialData.Get(AI_MATKEY_BASE_COLOR, color) == aiReturn_SUCCESS) { materialAttributes.albedo = glm::vec3(color.r, color.g, color.b); }
     
     // Specular
     if (materialData.Get(AI_MATKEY_SPECULAR_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.specular = value; }

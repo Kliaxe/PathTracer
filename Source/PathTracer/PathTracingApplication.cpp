@@ -226,8 +226,8 @@ void PathTracingApplication::InitializeModel()
 
     {
         Material::MaterialAttributes bunnyMaterialAttributes{ };
-        //bunnyMaterialAttributes.baseColor = glm::vec3(1.0f, 0.73f, 0.05f);
-        bunnyMaterialAttributes.baseColor = glm::vec3(1.0f, 0.73f, 0.05f) * 0.7f;
+        //bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f);
+        bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.7f;
         //bunnyMaterialAttributes.specular = 0.0f;
         //bunnyMaterialAttributes.metallic = 1.0f;
         bunnyMaterialAttributes.roughness = 0.05f;

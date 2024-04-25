@@ -26,18 +26,18 @@ PathTracingRenderPass::PathTracingRenderPass(int width, int height, PathTracingA
     InitializeTextures();
     InitializeBuffers();
 
-    m_denoiserPrimaryBaseColorInputPtr = new glm::vec3[width * height];
+    m_denoiserRadianceInputPtr = new glm::vec3[width * height];
+    m_denoiserPrimaryAlbedoInputPtr = new glm::vec3[width * height];
     m_denoiserPrimaryNormalInputPtr = new glm::vec3[width * height];
-    m_denoiserAccumulationInputPtr = new glm::vec3[width * height];
-    m_denoiserDenoisedAccumulationOutputPtr = new glm::vec3[width * height];
+    m_denoiserDenoisedRadianceOutputPtr = new glm::vec3[width * height];
 }
 
 PathTracingRenderPass::~PathTracingRenderPass()
 {
-    delete[] m_denoiserPrimaryBaseColorInputPtr;
+    delete[] m_denoiserRadianceInputPtr;
+    delete[] m_denoiserPrimaryAlbedoInputPtr;
     delete[] m_denoiserPrimaryNormalInputPtr;
-    delete[] m_denoiserAccumulationInputPtr;
-    delete[] m_denoiserDenoisedAccumulationOutputPtr;
+    delete[] m_denoiserDenoisedRadianceOutputPtr;
 }
 
 void PathTracingRenderPass::Render()
@@ -50,7 +50,7 @@ void PathTracingRenderPass::Render()
         // Mark all as resident
         for (const MaterialSave& materialSave : m_materialsSaved)
         {
-            glMakeTextureHandleResidentARB(materialSave.BaseColorTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.AlbedoTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.NormalTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.SpecularTextureHandle);
             glMakeTextureHandleResidentARB(materialSave.SpecularColorTextureHandle);
@@ -73,14 +73,13 @@ void PathTracingRenderPass::Render()
         m_ssboBVHNodes->Bind();
         m_ssboBVHPrimitives->Bind();
 
-        // Bind material and set uniforms
+        // Use material
         m_pathTracingMaterial->Use();
-        m_pathTracingMaterial->SetUniformValue("PreviousAccumulationTexture", m_pathTracingAccumulationTexture);
 
         // Uniform image output
-        m_pathTracingPrimaryBaseColorTexture->BindImageTexture(0, 0, GL_FALSE, 0, GL_WRITE_ONLY, TextureObject::InternalFormatRGBA32F);
-        m_pathTracingPrimaryNormalTexture->BindImageTexture(1, 0, GL_FALSE, 0, GL_WRITE_ONLY, TextureObject::InternalFormatRGBA32F);
-        m_pathTracingAccumulationTexture->BindImageTexture(2, 0, GL_FALSE, 0, GL_WRITE_ONLY, TextureObject::InternalFormatRGBA32F);
+        m_pathTracingRadianceTexture->BindImageTexture(0, 0, GL_FALSE, 0, GL_READ_WRITE, TextureObject::InternalFormatRGBA32F);
+        m_pathTracingPrimaryAlbedoTexture->BindImageTexture(1, 0, GL_FALSE, 0, GL_READ_WRITE, TextureObject::InternalFormatRGBA32F);
+        m_pathTracingPrimaryNormalTexture->BindImageTexture(2, 0, GL_FALSE, 0, GL_READ_WRITE, TextureObject::InternalFormatRGBA32F);
 
         const int threadSize = 8;
         const int numGroupsX = static_cast<uint32_t>(std::ceil(m_width / threadSize));
@@ -90,13 +89,13 @@ void PathTracingRenderPass::Render()
         // Make sure writing to image has finished before read
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-        m_outputTexture = m_pathTracingAccumulationTexture;
+        m_outputTexture = m_pathTracingRadianceTexture;
 
         // Mark all as non-resident - can be skipped if you know the same textures
         // will all be used for the next frame
         for (const MaterialSave& materialSave : m_materialsSaved)
         {
-            glMakeTextureHandleNonResidentARB(materialSave.BaseColorTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.AlbedoTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.NormalTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.SpecularTextureHandle);
             glMakeTextureHandleNonResidentARB(materialSave.SpecularColorTextureHandle);
@@ -118,17 +117,17 @@ void PathTracingRenderPass::Render()
     {
         // Extract texture to memory
 
-        m_pathTracingPrimaryBaseColorTexture->Bind();
-        m_pathTracingPrimaryBaseColorTexture->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, m_denoiserPrimaryBaseColorInputPtr);
-        m_pathTracingPrimaryBaseColorTexture->Unbind();
+        m_pathTracingRadianceTexture->Bind();
+        m_pathTracingRadianceTexture->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, m_denoiserRadianceInputPtr);
+        m_pathTracingRadianceTexture->Unbind();
+
+        m_pathTracingPrimaryAlbedoTexture->Bind();
+        m_pathTracingPrimaryAlbedoTexture->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, m_denoiserPrimaryAlbedoInputPtr);
+        m_pathTracingPrimaryAlbedoTexture->Unbind();
 
         m_pathTracingPrimaryNormalTexture->Bind();
         m_pathTracingPrimaryNormalTexture->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, m_denoiserPrimaryNormalInputPtr);
         m_pathTracingPrimaryNormalTexture->Unbind();
-
-        m_pathTracingAccumulationTexture->Bind();
-        m_pathTracingAccumulationTexture->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, m_denoiserAccumulationInputPtr);
-        m_pathTracingAccumulationTexture->Unbind();
 
         // https://github.com/OpenImageDenoise/oidn#c11-api-example
 
@@ -143,10 +142,10 @@ void PathTracingRenderPass::Render()
 
         // Create a denoising filter
         oidn::FilterRef filter = device.newFilter("RT"); // generic ray tracing filter
-        filter.setImage("color", m_denoiserAccumulationInputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
-        filter.setImage("albedo", m_denoiserPrimaryBaseColorInputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
+        filter.setImage("color", m_denoiserRadianceInputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
+        filter.setImage("albedo", m_denoiserPrimaryAlbedoInputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
         filter.setImage("normal", m_denoiserPrimaryNormalInputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
-        filter.setImage("output", m_denoiserDenoisedAccumulationOutputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
+        filter.setImage("output", m_denoiserDenoisedRadianceOutputPtr, oidn::Format::Float3, m_width, m_height, 0, 0, 0);
         filter.set("hdr", true);
         filter.commit();
 
@@ -168,18 +167,18 @@ void PathTracingRenderPass::Render()
         }
         else
         {
-            // m_denoiserDenoisedAccumulationOutputPtr to std::span
-            std::byte* bytePtr = reinterpret_cast<std::byte*>(m_denoiserDenoisedAccumulationOutputPtr);
+            // m_denoiserDenoisedRadianceOutputPtr to std::span
+            std::byte* bytePtr = reinterpret_cast<std::byte*>(m_denoiserDenoisedRadianceOutputPtr);
             size_t sizeInBytes = (size_t)m_width * (size_t)m_height * 3 * sizeof(float); // RGB
             std::span<const std::byte> data(bytePtr, sizeInBytes);
 
             // Insert data
-            m_pathTracingDenoisedAccumulationTexture->Bind();
-            m_pathTracingDenoisedAccumulationTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGB, TextureObject::InternalFormat::InternalFormatRGB32F, data, Data::Type::Float);
-            m_pathTracingDenoisedAccumulationTexture->Unbind();
+            m_pathTracingDenoisedRadianceTexture->Bind();
+            m_pathTracingDenoisedRadianceTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGB, TextureObject::InternalFormat::InternalFormatRGB32F, data, Data::Type::Float);
+            m_pathTracingDenoisedRadianceTexture->Unbind();
 
             // Assign output texture
-            m_outputTexture = m_pathTracingDenoisedAccumulationTexture;
+            m_outputTexture = m_pathTracingDenoisedRadianceTexture;
         }
 
         // Even though we can get error from denoiser, let us tell that this has been denoised
@@ -203,20 +202,20 @@ void PathTracingRenderPass::Render()
 
 void PathTracingRenderPass::InitializeTextures()
 {
-    // Path Tracing Accumulation Texture
-    m_pathTracingAccumulationTexture = std::make_shared<Texture2DObject>();
-    m_pathTracingAccumulationTexture->Bind();
-    m_pathTracingAccumulationTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGBA, TextureObject::InternalFormat::InternalFormatRGBA32F);
-    m_pathTracingAccumulationTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_NEAREST);
-    m_pathTracingAccumulationTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
+    // Path Tracing Radiance Texture
+    m_pathTracingRadianceTexture = std::make_shared<Texture2DObject>();
+    m_pathTracingRadianceTexture->Bind();
+    m_pathTracingRadianceTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGBA, TextureObject::InternalFormat::InternalFormatRGBA32F);
+    m_pathTracingRadianceTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_NEAREST);
+    m_pathTracingRadianceTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
     Texture2DObject::Unbind();
 
-    // Path Tracing Primary Base Color Texture
-    m_pathTracingPrimaryBaseColorTexture = std::make_shared<Texture2DObject>();
-    m_pathTracingPrimaryBaseColorTexture->Bind();
-    m_pathTracingPrimaryBaseColorTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGBA, TextureObject::InternalFormat::InternalFormatRGBA32F);
-    m_pathTracingPrimaryBaseColorTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_NEAREST);
-    m_pathTracingPrimaryBaseColorTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
+    // Path Tracing Primary Albedo Texture
+    m_pathTracingPrimaryAlbedoTexture = std::make_shared<Texture2DObject>();
+    m_pathTracingPrimaryAlbedoTexture->Bind();
+    m_pathTracingPrimaryAlbedoTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGBA, TextureObject::InternalFormat::InternalFormatRGBA32F);
+    m_pathTracingPrimaryAlbedoTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_NEAREST);
+    m_pathTracingPrimaryAlbedoTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
     Texture2DObject::Unbind();
 
     // Path Tracing Primary Normal Texture
@@ -227,12 +226,12 @@ void PathTracingRenderPass::InitializeTextures()
     m_pathTracingPrimaryNormalTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
     Texture2DObject::Unbind();
 
-    // Denoised Path Tracing Render Texture
-    m_pathTracingDenoisedAccumulationTexture = std::make_shared<Texture2DObject>();
-    m_pathTracingDenoisedAccumulationTexture->Bind();
-    m_pathTracingDenoisedAccumulationTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGB, TextureObject::InternalFormat::InternalFormatRGB32F);
-    m_pathTracingDenoisedAccumulationTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_NEAREST);
-    m_pathTracingDenoisedAccumulationTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
+    // Denoised Path Tracing Radiance Texture
+    m_pathTracingDenoisedRadianceTexture = std::make_shared<Texture2DObject>();
+    m_pathTracingDenoisedRadianceTexture->Bind();
+    m_pathTracingDenoisedRadianceTexture->SetImage(0, m_width, m_height, TextureObject::FormatRGB, TextureObject::InternalFormat::InternalFormatRGB32F);
+    m_pathTracingDenoisedRadianceTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_NEAREST);
+    m_pathTracingDenoisedRadianceTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_NEAREST);
     Texture2DObject::Unbind();
 }
 
@@ -356,9 +355,9 @@ void PathTracingRenderPass::InitializeBuffers()
                 // Placeholder
                 MaterialSave materialSave{ };
 
-                // Base Color Texture
-                std::shared_ptr<Texture2DObject> baseColorTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::BaseColorTexture);
-                if (baseColorTexture) { materialSave.BaseColorTextureHandle = baseColorTexture->GetBindlessTextureHandle(); }
+                // Albedo Texture
+                std::shared_ptr<Texture2DObject> albedoTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::AlbedoTexture);
+                if (albedoTexture) { materialSave.AlbedoTextureHandle = albedoTexture->GetBindlessTextureHandle(); }
 
                 // Normal Texture
                 std::shared_ptr<Texture2DObject> normalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::NormalTexture);
@@ -408,7 +407,7 @@ void PathTracingRenderPass::InitializeBuffers()
                 Material::MaterialAttributes materialAttributes = material.GetMaterialAttributes();
 
                 // Translate attributes
-                materialSave.baseColor = materialAttributes.baseColor;
+                materialSave.albedo = materialAttributes.albedo;
                 materialSave.specular = materialAttributes.specular;
                 materialSave.specularColor = materialAttributes.specularColor;
                 materialSave.metallic = materialAttributes.metallic;
@@ -517,7 +516,7 @@ void PathTracingRenderPass::InitializeBuffers()
             MaterialAlign materialAlign{ };
 
             // Texture handles
-            materialAlign.BaseColorTextureHandle = materialSave.BaseColorTextureHandle;
+            materialAlign.AlbedoTextureHandle = materialSave.AlbedoTextureHandle;
             materialAlign.NormalTextureHandle = materialSave.NormalTextureHandle;
             materialAlign.SpecularTextureHandle = materialSave.SpecularTextureHandle;
             materialAlign.SpecularColorTextureHandle = materialSave.SpecularColorTextureHandle;
@@ -531,7 +530,7 @@ void PathTracingRenderPass::InitializeBuffers()
             materialAlign.EmissiveTextureHandle = materialSave.EmissiveTextureHandle;
 
             // Attributes
-            materialAlign.baseColor = materialSave.baseColor;
+            materialAlign.albedo = materialSave.albedo;
             materialAlign.specular = materialSave.specular;
             materialAlign.specularColor = materialSave.specularColor;
             materialAlign.metallic = materialSave.metallic;

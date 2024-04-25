@@ -25,7 +25,7 @@ public:
     // Avaliable textures for this material
     enum MaterialTextureSlot
     {
-        BaseColorTexture,
+        AlbedoTexture,
         NormalTexture,
         SpecularTexture,
         SpecularColorTexture,
@@ -43,7 +43,7 @@ public:
     // Avaliable attributes for this material
     struct MaterialAttributes
     {
-		glm::vec3 baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+		glm::vec3 albedo = glm::vec3(1.0f, 1.0f, 1.0f);
 		float specular = 1.0f;
 		glm::vec3 specularColor = glm::vec3(1.0f, 1.0f, 1.0f);
 		float metallic = 0.0f;

@@ -49,10 +49,10 @@ private:
     std::shared_ptr<Material> m_pathTracingMaterial;
 
     // Textures
-    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryBaseColorTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingRadianceTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryAlbedoTexture;
     std::shared_ptr<Texture2DObject> m_pathTracingPrimaryNormalTexture;
-    std::shared_ptr<Texture2DObject> m_pathTracingAccumulationTexture;
-    std::shared_ptr<Texture2DObject> m_pathTracingDenoisedAccumulationTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingDenoisedRadianceTexture;
     std::shared_ptr<Texture2DObject> m_outputTexture;
 
     // Framebuffers
@@ -70,7 +70,7 @@ private:
     struct MaterialSave
     {
         // Texture handles
-        GLuint64 BaseColorTextureHandle = 0;
+        GLuint64 AlbedoTextureHandle = 0;
         GLuint64 NormalTextureHandle = 0;
         GLuint64 SpecularTextureHandle = 0;
         GLuint64 SpecularColorTextureHandle = 0;
@@ -84,7 +84,7 @@ private:
         GLuint64 EmissiveTextureHandle = 0;
 
         // Attributes
-        glm::vec3 baseColor = glm::vec3(1.0f, 1.0f, 1.0f);
+        glm::vec3 albedo = glm::vec3(1.0f, 1.0f, 1.0f);
         float specular = 1.0f;
         glm::vec3 specularColor = glm::vec3(1.0f, 1.0f, 1.0f);
         float metallic = 0.0f;
@@ -118,7 +118,7 @@ private:
     struct alignas(16) MaterialAlign
     {
         // Texture handles
-        GLuint64 BaseColorTextureHandle;
+        GLuint64 AlbedoTextureHandle;
         GLuint64 NormalTextureHandle;
         GLuint64 SpecularTextureHandle;
         GLuint64 SpecularColorTextureHandle;
@@ -132,7 +132,7 @@ private:
         GLuint64 EmissiveTextureHandle;
 
         // Attributes
-        alignas(16) glm::vec3 baseColor;
+        alignas(16) glm::vec3 albedo;
         float specular;
         alignas(16) glm::vec3 specularColor;
         float metallic;
@@ -155,10 +155,10 @@ private:
     PathTracingApplication* m_pathTracingApplication;
 
     // Denoiser data
-    glm::vec3* m_denoiserAccumulationInputPtr;
-    glm::vec3* m_denoiserPrimaryBaseColorInputPtr;
+    glm::vec3* m_denoiserRadianceInputPtr;
+    glm::vec3* m_denoiserPrimaryAlbedoInputPtr;
     glm::vec3* m_denoiserPrimaryNormalInputPtr;
-    glm::vec3* m_denoiserDenoisedAccumulationOutputPtr;
+    glm::vec3* m_denoiserDenoisedRadianceOutputPtr;
 
     // Saved materials
     std::vector<MaterialSave> m_materialsSaved;
