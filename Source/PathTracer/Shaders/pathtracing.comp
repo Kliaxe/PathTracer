@@ -41,7 +41,7 @@ struct Environment
 {
 	uint64_t HDRI;
 	uint64_t HDRICache;
-	uint HDRIResolution;
+	vec2 HDRIDimensions;
 };
 
 struct Material
@@ -637,7 +637,7 @@ float smithG_GGX_aniso(float NdotV, float VdotX, float VdotY, float ax, float ay
     return 1.0f / (NdotV + sqrt(sqr(VdotX * ax) + sqr(VdotY * ay) + sqr(NdotV)));
 }
 
-vec3 BRDF_Evaluate(vec3 V, vec3 N, vec3 L, vec3 X, vec3 Y, Material material)
+vec3 EvaluationBRDF(vec3 V, vec3 N, vec3 L, vec3 X, vec3 Y, Material material)
 {
     float NdotL = dot(N, L);
     float NdotV = dot(N, V);
@@ -665,23 +665,23 @@ vec3 BRDF_Evaluate(vec3 V, vec3 N, vec3 L, vec3 X, vec3 Y, Material material)
     float ss = 1.25f * (Fss * (1.0f / (NdotL + NdotV) - 0.5f) + 0.5f);
     
     // Specular Reflection - Isotropic
-	//float alpha = material.roughness * material.roughness;
-	//float Ds = GTR2(NdotH, alpha);
-	//float FH = SchlickFresnel(LdotH);
-	//vec3 Fs = mix(Cspec0, vec3(1.0f), FH);
-	//float Gs = smithG_GGX(NdotL, material.roughness);
-	//Gs *= smithG_GGX(NdotV, material.roughness);
+	float alpha = material.roughness * material.roughness;
+	float Ds = GTR2(NdotH, alpha);
+	float FH = SchlickFresnel(LdotH);
+	vec3 Fs = mix(Cspec0, vec3(1.0f), FH);
+	float Gs = smithG_GGX(NdotL, material.roughness);
+	Gs *= smithG_GGX(NdotV, material.roughness);
     
     // Specular Reflection - Anisotropy
-    float aspect = sqrt(1.0f - material.anisotropy * 0.9f);
-    float ax = max(0.001f, sqr(material.roughness) / aspect);
-    float ay = max(0.001f, sqr(material.roughness) * aspect);
-    float Ds = GTR2_aniso(NdotH, dot(H, X), dot(H, Y), ax, ay);
-    float FH = SchlickFresnel(LdotH);
-    vec3 Fs = mix(Cspec0, vec3(1.0f), FH);
-    float Gs;
-    Gs  = smithG_GGX_aniso(NdotL, dot(L, X), dot(L, Y), ax, ay);
-    Gs *= smithG_GGX_aniso(NdotV, dot(V, X), dot(V, Y), ax, ay);
+//    float aspect = sqrt(1.0f - material.anisotropy * 0.9f);
+//    float ax = max(0.001f, sqr(material.roughness) / aspect);
+//    float ay = max(0.001f, sqr(material.roughness) * aspect);
+//    float Ds = GTR2_aniso(NdotH, dot(H, X), dot(H, Y), ax, ay);
+//    float FH = SchlickFresnel(LdotH);
+//    vec3 Fs = mix(Cspec0, vec3(1.0f), FH);
+//    float Gs;
+//    Gs  = smithG_GGX_aniso(NdotL, dot(L, X), dot(L, Y), ax, ay);
+//    Gs *= smithG_GGX_aniso(NdotV, dot(V, X), dot(V, Y), ax, ay);
 
     // Clearcoat
     float Dr = GTR1(NdotH, mix(0.1f, 0.001f, material.clearcoatRoughness));
@@ -862,7 +862,6 @@ vec3 SampleHDR(vec2 Xi)
 
 vec2 GetSphericalCoord(vec3 V)
 {
-//	return (vec2(-atan(V.z, V.x) / PI, -V.y) + 1.0f) * 0.5f;
     vec2 uv = vec2(atan(V.z, V.x), asin(V.y));
     uv /= vec2(2.0 * PI, PI);
     uv += 0.5;
@@ -871,29 +870,28 @@ vec2 GetSphericalCoord(vec3 V)
 }
 
 // Get HDR environment color
-vec3 GetHDRColor(vec3 L)
+vec3 EvaluationHDR(vec3 L)
 {
 	vec2 uv = GetSphericalCoord(normalize(L));
 	return texture(sampler2D(environment.HDRI), uv).rgb;
 }
 
 // Get the probability density of the HDR at the position given the incoming light direction l
-// HDR resolution is 4096 * 2048, hence 4096 is the resolution
-float HDR_PDF(vec3 L)
+float ProbabilityDensityHDRI(vec3 L)
 {
 	vec2 uv = GetSphericalCoord(normalize(L));
 	float pdf = texture(sampler2D(environment.HDRICache), uv).b; // Sample probability density
 	
-	float theta = PI * (0.5f - uv.y); // Range of theta [-pi/2 ~ pi/2]
-	float sinTheta = max(sin(theta), 1e10f);
+	float theta = PI * (1.0f - uv.y); // 1.0f for full range...
+	float sinTheta = max(sin(theta), 1e-10f);
 
 	// Conversion factor between spherical coordinates and image integration domain
-	float pConvert = float(environment.HDRIResolution * environment.HDRIResolution / 2) / (2.0f * PI * PI * sinTheta);
+	float pConvert = environment.HDRIDimensions.x * environment.HDRIDimensions.y / (2.0f * PI * PI * sinTheta);
 
 	return pdf * pConvert;
 }
 
-float BRDF_PDF(vec3 V, vec3 N, vec3 L, Material material) 
+float ProbabilityDensityBRDF(vec3 V, vec3 N, vec3 L, Material material) 
 {
     float NdotL = dot(N, L);
     float NdotV = dot(N, V);
@@ -945,8 +943,8 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 {
 	HitInfo hitInfo = primaryHit;
 
-	vec3 energy	= vec3(0.0f); // Final color
-	vec3 result	= vec3(1.0f); // Recursively accumulated color
+	vec3 radiance	= vec3(0.0f); // Energy
+	vec3 throughput	= vec3(1.0f); // Recursively accumulated color
 
 	const uint MaxBounceCount = 3;
 	for (uint bounce = 0; bounce <= MaxBounceCount; bounce++)
@@ -974,19 +972,25 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 
 				// Light
 				vec3 L = hdrRay.direction;
-				vec3 color = GetHDRColor(L);
-				float pdfLight = HDR_PDF(L);
+				vec3 color = EvaluationHDR(L);
+				float pdfLight = ProbabilityDensityHDRI(L);
 
 				// BRDF
 				vec3 tangent;
 				vec3 bitangent;
 				GetTangentBitangent(N, tangent, bitangent);
-				vec3 f_r = BRDF_Evaluate(V, N, L, bitangent, tangent, hitInfo.material);
-				float pdfBRDF = BRDF_PDF(V, N, L, hitInfo.material);
+				vec3 f = EvaluationBRDF(V, N, L, bitangent, tangent, hitInfo.material);
+				float pdfBRDF = ProbabilityDensityBRDF(V, N, L, hitInfo.material);
 
-				// Multiple importance sampling
-				float misWeight = misMixWeight(pdfLight, pdfBRDF);
-				energy += misWeight * result * color * f_r * dot(N, L) / pdfLight;
+				if (pdfBRDF > 0.0f)
+				{
+					// Multiple importance sampling
+					float misWeight = misMixWeight(pdfLight, pdfBRDF);
+					if (misWeight > 0.0f)
+					{
+						radiance += misWeight * throughput * color * f * dot(N, L) / pdfLight;
+					}
+				}
 			}
 		}
 
@@ -1003,8 +1007,8 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 		GetTangentBitangent(N, tangent, bitangent);
 
 		// Obtain the BRDF value and probability density for the direction L
-		vec3 f_r = BRDF_Evaluate(V, N, L, bitangent, tangent, hitInfo.material);
-		float pdfBRDF = BRDF_PDF(V, N, L, hitInfo.material);
+		vec3 f = EvaluationBRDF(V, N, L, bitangent, tangent, hitInfo.material);
+		float pdfBRDF = ProbabilityDensityBRDF(V, N, L, hitInfo.material);
 		if (pdfBRDF <= 0.0f) break;
 
 		// Initialize ray of light
@@ -1015,36 +1019,38 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 		// Missed - HDR light contribution
 		if (!hitInfo.didHit)
 		{
-			vec3 color = GetHDRColor(L);
-			float pdfLight = HDR_PDF(L);
+			vec3 color = EvaluationHDR(L);
+			float pdfLight = ProbabilityDensityHDRI(L);
 
 			// Multiple importance sampling
 			float misWeight = misMixWeight(pdfBRDF, pdfLight);
-
-			// Indirect lighting rays are emitted according to BRDF distribution
-			energy += misWeight * result * color * f_r * NdotL / pdfBRDF;
+			if (misWeight > 0.0f)
+			{
+				// Indirect lighting rays are emitted according to BRDF distribution
+				radiance += misWeight * throughput * color * f * NdotL / pdfBRDF;
+			}
 
 			break;
 		}
 
 		// Emissive contribution
 		vec3 emission = hitInfo.material.emissiveColor;
-		energy += result * emission * f_r * NdotL / pdfBRDF;
+		radiance += throughput * emission * f * NdotL / pdfBRDF;
 
 		// Accumulate result
-		result *= f_r * NdotL / pdfBRDF;
+		throughput *= f * NdotL / pdfBRDF;
 
-		// Russion roulette
+		// Russian roulette
 		// Random early exit if ray colour is nearly 0 (can't contribute much to final result)
-		float p = max(result.r, max(result.g, result.b));
+		float p = max(throughput.r, max(throughput.g, throughput.b));
 		if (RandomValue(rngState) >= p) 
 		{
 			break;
 		}
-		result *= 1.0f / p;
+		throughput *= 1.0f / p;
 	}
 
-	return energy;
+	return radiance;
 }
 
 void main()
@@ -1055,7 +1061,7 @@ void main()
 	uint pixelIndex = texelCoord.y * uint(FrameDimensions.x) + texelCoord.x;
 	uint rngState = pixelIndex + FrameCount * 719393;
 
-	// Debug HDRI Cache: Draw red dots on important source of light
+	// Debug HDRI Cache: Draw red dots on important sources of light
 #if 0
 	vec3 hdrColor = texture(sampler2D(environment.HDRI), vec2(uv.x, -uv.y)).rgb;
 
@@ -1108,18 +1114,18 @@ void main()
 	{
 		// Sample HDR
 		vec3 L = ray.direction;
-		result = GetHDRColor(L);
+		result = EvaluationHDR(L);
 	}
 	else
 	{
 		// PathTrace 
-		vec3 totalIncomingLight = vec3(0.0f);
+		vec3 totalRadiance = vec3(0.0f);
 		const uint NumRaysPerPixel = 1;
 		for (uint rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
 		{
-			totalIncomingLight += PathTrace(primaryHit, ray, rngState);
+			totalRadiance += PathTrace(primaryHit, ray, rngState);
 		}
-		result = totalIncomingLight / float(NumRaysPerPixel);
+		result = totalRadiance / float(NumRaysPerPixel);
 	}
 
 	vec3 currentColor = result;
@@ -1127,23 +1133,9 @@ void main()
 	
 	// Combine prev frame with current frame. Weight the contributions to result in an average over all frames.
 	float weight = 1.0f / FrameCount;
-	//vec3 accumulatedColor = clamp(previousColor * (1.0f - weight) + currentColor * weight, 0.0f, 1.0f);
 	vec3 accumulatedColor = previousColor * (1.0f - weight) + currentColor * weight;
 	
 	// Value
 	vec4 value = vec4(accumulatedColor, 1.0f);
-
-//	HitInfo hitInfo = HitBVH(ray);
-//	vec4 value = vec4(hitInfo.didHit);
-//	HitInfo hitInfo = HitArray(ray, 0, BVHPrimitives.length() - 1);
-//	vec4 value = vec4(hitInfo.didHit);
-
-//	HitInfo hitInfo = HitBVH(ray);
-//
-//	Material material = GetMaterial(0);
-//	hitInfo.normal = SampleNormalMap(sampler2D(material.NormalTextureHandle), hitInfo);
-//
-//	vec4 value = vec4(float(hitInfo.didHit) * hitInfo.normal, 1.0f);
-
 	imageStore(imgOutput, texelCoord, value);
 }

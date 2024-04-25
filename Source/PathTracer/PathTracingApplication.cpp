@@ -223,11 +223,14 @@ void PathTracingApplication::InitializeModel()
 
     {
         Material::MaterialAttributes bunnyMaterialAttributes{ };
-        bunnyMaterialAttributes.baseColor = glm::vec3(252.0f / 255.0f, 186.0f / 255.0f, 3.0f / 255.0f);
-        bunnyMaterialAttributes.roughness = 0.1f;
+        //bunnyMaterialAttributes.baseColor = glm::vec3(1.0f, 0.73f, 0.05f);
+        bunnyMaterialAttributes.baseColor = glm::vec3(1.0f, 0.73f, 0.05f) * 0.7f;
+        //bunnyMaterialAttributes.specular = 0.0f;
         //bunnyMaterialAttributes.metallic = 1.0f;
+        bunnyMaterialAttributes.roughness = 0.05f;
         //bunnyMaterialAttributes.subsurface = 2.0f;
 
+        //Model model = loader.Load("Content/Models/Sphere.glb");
         Model model = loader.Load("Content/Models/Bunny.glb");
 
         std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(model.GetMaterial(0));
@@ -394,8 +397,8 @@ void PathTracingApplication::RenderGUI()
         ImGui::Spacing();
         changed |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
         ImGui::Spacing();
-        /* changed |= */ ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 1.0f);
-        /* changed |= */ ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 1.0f);
+        changed |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 1.0f);
+        changed |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 1.0f);
     }
 
     if (changed)

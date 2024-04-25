@@ -433,12 +433,16 @@ void PathTracingRenderPass::InitializeBuffers()
         // Get HDRI
         std::shared_ptr<Texture2DObject> HDRI = m_pathTracingApplication->GetHDRI();
 
+        // Start timer
+        Timer timer("HDRI Cache");
+
         // Calculate and save HDRI Cache
         int HDRIWidth, HDRIHeight;
         m_HDRICache = CalculateHDRICache(HDRI, HDRIWidth, HDRIHeight);
 
-        // Choose largest HDRI dimension
-        unsigned int HDRIResolution = std::max(HDRIWidth, HDRIHeight);
+        // End time point in milliseconds and print
+        timer.Stop();
+        timer.Print();
 
         // Get HDRI handle
         const GLuint64 HDRIHandle = HDRI->GetBindlessTextureHandle();
@@ -454,7 +458,7 @@ void PathTracingRenderPass::InitializeBuffers()
         EnvironmentAlign environment { };
         environment.HDRIHandle = HDRIHandle;
         environment.HDRICacheHandle = HDRICacheHandle;
-        environment.HDRIResolution = HDRIResolution;
+        environment.HDRIDimensions = glm::vec2(float(HDRIWidth), float(HDRIHeight));
 
         // Convert to span
         std::span<EnvironmentAlign> span = std::span(&environment, 1);
@@ -574,9 +578,16 @@ void PathTracingRenderPass::InitializeBuffers()
             BVH::BVHNode InitNode{ };
             std::vector<BVH::BVHNode> BVHNodes{ InitNode };
 
+            // Start timer
+            Timer timer("BVH Calculation");
+
             // Calculate BVH
             //BVH::BuildBVH(BVHPrimitives, BVHNodes, 0, (int)BVHPrimitives.size() - 1, 8);
             BVH::BuildBVHWithSAH(BVHPrimitives, BVHNodes, 0, (int)BVHPrimitives.size() - 1, 8);
+
+            // End time point in milliseconds and print
+            timer.Stop();
+            timer.Print();
 
             // Align BVH nodes
             std::vector<BVH::BVHNodeAlign> BVHNodesAligned;
@@ -803,9 +814,6 @@ std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::
     // We're done retrieving information
     HDRI->Unbind();
 
-    // Start timer
-    Timer timer("HDRI Cache");
-
     float lumSum = 0.0f;
 
     // Initialize a probability density function (pdf) of height h and width w, and calculate the total brightness
@@ -819,7 +827,7 @@ std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::
             float R = textureData[index + 0];
             float G = textureData[index + 1];
             float B = textureData[index + 2];
-            float lum = 0.2f * R + 0.7f * G + 0.1f * B;
+            float lum = 0.212671f * R + 0.715160f * G + 0.072169f * B;
             pdf[i][j] = lum;
             lumSum += lum;
         }
@@ -905,10 +913,6 @@ std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::
             cache[3 * (i * width + j) + 2] = sample_p[i][j]; // B
         }
     }
-
-    // End time point in milliseconds and print
-    timer.Stop();
-    timer.Print();
 
     // Translate to span of bytes
     std::span<const float> dataSpanFloat(cache, width * height * 3);

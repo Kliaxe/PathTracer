@@ -110,7 +110,7 @@ private:
     {
         GLuint64 HDRIHandle;
         GLuint64 HDRICacheHandle;
-        alignas(16) unsigned int HDRIResolution;
+        alignas(16) glm::vec2 HDRIDimensions;
     };
 
     struct alignas(16) MaterialAlign
