@@ -17,6 +17,7 @@ uniform mat4 ProjMatrix;
 uniform mat4 InvProjMatrix;
 uniform uint FrameCount;
 uniform vec2 FrameDimensions;
+uniform uint AntiAliasingEnabled;
 uniform float FocalLength;
 uniform float ApertureSize;
 uniform vec2 ApertureShape;
@@ -1181,6 +1182,14 @@ void main()
 	imageStore(imgOutput, texelCoord, debugValue);
 	return;
 #endif
+
+	// Apply Anti-Aliasing
+	if (bool(AntiAliasingEnabled))
+	{
+		// Apply random offset in the range [-0.5, 0.5] pixels
+		vec2 offset = RandomValueVec2(rngState);
+		uv += (offset - 0.5f) / vec2(FrameDimensions);
+	}
 
 	// Initialize primary ray
 	Ray ray = GeneratePrimaryRay(uv, rngState);

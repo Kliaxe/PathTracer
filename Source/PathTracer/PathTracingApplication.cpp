@@ -100,6 +100,7 @@ void PathTracingApplication::Update()
     m_pathTracingMaterial->SetUniformValue("InvProjMatrix", glm::inverse(camera.GetProjectionMatrix()));
     m_pathTracingMaterial->SetUniformValue("FrameCount", m_frameCount);
     m_pathTracingMaterial->SetUniformValue("FrameDimensions", glm::vec2((float)width, (float)height));
+    m_pathTracingMaterial->SetUniformValue("AntiAliasingEnabled", (unsigned int)m_AntiAliasingEnabled);
     m_pathTracingMaterial->SetUniformValue("FocalLength", m_focalLength);
     m_pathTracingMaterial->SetUniformValue("ApertureSize", m_apertureSize);
     m_pathTracingMaterial->SetUniformValue("ApertureShape", m_apertureShape);
@@ -228,7 +229,7 @@ void PathTracingApplication::InitializeModel()
         Material::MaterialAttributes bunnyMaterialAttributes{ };
         //bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f);
         bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.7f;
-        //bunnyMaterialAttributes.specular = 0.0f;
+        //bunnyMaterialAttributes.specular = 0.05f;
         //bunnyMaterialAttributes.metallic = 1.0f;
         bunnyMaterialAttributes.roughness = 0.05f;
         //bunnyMaterialAttributes.subsurface = 2.0f;
@@ -401,6 +402,7 @@ void PathTracingApplication::RenderGUI()
         changed |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
         ImGui::Spacing();
 
+        changed |= ImGui::Checkbox("Anti-Aliasing", (bool*)(&m_AntiAliasingEnabled));
         changed |= ImGui::SliderFloat("Focal Length", (float*)(&m_focalLength), 0.0f, 15.0f);
         changed |= ImGui::SliderFloat("Aperture Size", (float*)(&m_apertureSize), 0.0f, 1.0f);
         changed |= ImGui::SliderFloat2("Aperture Shape", (float*)(&m_apertureShape), 0.0f, 1.0f);
