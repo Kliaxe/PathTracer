@@ -50,28 +50,27 @@ void PathTracingRenderPass::Render()
         // Mark all as resident
         for (const MaterialSave& materialSave : m_materialsSaved)
         {
-            glMakeTextureHandleResidentARB(materialSave.AlbedoTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.NormalTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.SpecularTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.SpecularColorTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.MetallicRoughnessTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.SheenRoughnessTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.SheenColorTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.ClearcoatTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.ClearcoatRoughnessTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.ClearcoatNormalTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.TransmissionTextureHandle);
-            glMakeTextureHandleResidentARB(materialSave.EmissiveTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.emissionTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.albedoTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.normalTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.specularTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.specularColorTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.metallicRoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.sheenRoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.sheenColorTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.clearcoatTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.clearcoatRoughnessTextureHandle);
+            glMakeTextureHandleResidentARB(materialSave.transmissionTextureHandle);
         }
-        glMakeTextureHandleResidentARB(m_HDRIHandle);
-        glMakeTextureHandleResidentARB(m_HDRICacheHandle);
+        glMakeTextureHandleResidentARB(m_hdriHandle);
+        glMakeTextureHandleResidentARB(m_hdriCacheHandle);
         
         // Bind SSBO buffers
         m_ssboSettings->Bind();
         m_ssboEnvironment->Bind();
         m_ssboMaterials->Bind();
-        m_ssboBVHNodes->Bind();
-        m_ssboBVHPrimitives->Bind();
+        m_ssboBvhNodes->Bind();
+        m_ssboBvhPrimitives->Bind();
 
         // Use material
         m_pathTracingMaterial->Use();
@@ -81,7 +80,7 @@ void PathTracingRenderPass::Render()
         m_pathTracingPrimaryAlbedoTexture->BindImageTexture(1, 0, GL_FALSE, 0, GL_READ_WRITE, TextureObject::InternalFormatRGBA32F);
         m_pathTracingPrimaryNormalTexture->BindImageTexture(2, 0, GL_FALSE, 0, GL_READ_WRITE, TextureObject::InternalFormatRGBA32F);
 
-        const int threadSize = 8;
+        const int threadSize = 16;
         const int numGroupsX = static_cast<uint32_t>(std::ceil(m_width / threadSize));
         const int numGroupsY = static_cast<uint32_t>(std::ceil(m_height / threadSize));
         glDispatchCompute(numGroupsX, numGroupsY, 1);
@@ -95,21 +94,20 @@ void PathTracingRenderPass::Render()
         // will all be used for the next frame
         for (const MaterialSave& materialSave : m_materialsSaved)
         {
-            glMakeTextureHandleNonResidentARB(materialSave.AlbedoTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.NormalTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.SpecularTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.SpecularColorTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.MetallicRoughnessTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.SheenRoughnessTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.SheenColorTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.ClearcoatTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.ClearcoatRoughnessTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.ClearcoatNormalTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.TransmissionTextureHandle);
-            glMakeTextureHandleNonResidentARB(materialSave.EmissiveTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.emissionTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.albedoTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.normalTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.specularTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.specularColorTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.metallicRoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.sheenRoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.sheenColorTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.clearcoatTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.clearcoatRoughnessTextureHandle);
+            glMakeTextureHandleNonResidentARB(materialSave.transmissionTextureHandle);
         }
-        glMakeTextureHandleNonResidentARB(m_HDRIHandle);
-        glMakeTextureHandleNonResidentARB(m_HDRICacheHandle);
+        glMakeTextureHandleNonResidentARB(m_hdriHandle);
+        glMakeTextureHandleNonResidentARB(m_hdriCacheHandle);
     }
     
     // Denoise
@@ -355,73 +353,68 @@ void PathTracingRenderPass::InitializeBuffers()
                 // Placeholder
                 MaterialSave materialSave{ };
 
+                // Emission Texture
+                std::shared_ptr<Texture2DObject> emissionTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::EmissionTexture);
+                if (emissionTexture) { materialSave.emissionTextureHandle = emissionTexture->GetBindlessTextureHandle(); }
+
                 // Albedo Texture
                 std::shared_ptr<Texture2DObject> albedoTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::AlbedoTexture);
-                if (albedoTexture) { materialSave.AlbedoTextureHandle = albedoTexture->GetBindlessTextureHandle(); }
+                if (albedoTexture) { materialSave.albedoTextureHandle = albedoTexture->GetBindlessTextureHandle(); }
 
                 // Normal Texture
                 std::shared_ptr<Texture2DObject> normalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::NormalTexture);
-                if (normalTexture) { materialSave.NormalTextureHandle = normalTexture->GetBindlessTextureHandle(); }
+                if (normalTexture) { materialSave.normalTextureHandle = normalTexture->GetBindlessTextureHandle(); }
 
                 // Specular Texture
                 std::shared_ptr<Texture2DObject> specularTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SpecularTexture);
-                if (specularTexture) { materialSave.SpecularTextureHandle = specularTexture->GetBindlessTextureHandle(); }
+                if (specularTexture) { materialSave.specularTextureHandle = specularTexture->GetBindlessTextureHandle(); }
 
                 // Specular Color Texture
                 std::shared_ptr<Texture2DObject> specularColorTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SpecularColorTexture);
-                if (specularColorTexture) { materialSave.SpecularColorTextureHandle = specularColorTexture->GetBindlessTextureHandle(); }
+                if (specularColorTexture) { materialSave.specularColorTextureHandle = specularColorTexture->GetBindlessTextureHandle(); }
 
                 // Metallic Roughness Texture
                 std::shared_ptr<Texture2DObject> metallicRoughnessTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::MetallicRoughnessTexture);
-                if (metallicRoughnessTexture) { materialSave.MetallicRoughnessTextureHandle = metallicRoughnessTexture->GetBindlessTextureHandle(); }
+                if (metallicRoughnessTexture) { materialSave.metallicRoughnessTextureHandle = metallicRoughnessTexture->GetBindlessTextureHandle(); }
 
                 // Sheen Roughness Texture
                 std::shared_ptr<Texture2DObject> sheenRoughnessTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SheenRoughnessTexture);
-                if (sheenRoughnessTexture) { materialSave.SheenRoughnessTextureHandle = sheenRoughnessTexture->GetBindlessTextureHandle(); }
+                if (sheenRoughnessTexture) { materialSave.sheenRoughnessTextureHandle = sheenRoughnessTexture->GetBindlessTextureHandle(); }
 
                 // Sheen Color Texture
                 std::shared_ptr<Texture2DObject> sheenColorTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::SheenColorTexture);
-                if (sheenColorTexture) { materialSave.SheenColorTextureHandle = sheenColorTexture->GetBindlessTextureHandle(); }
+                if (sheenColorTexture) { materialSave.sheenColorTextureHandle = sheenColorTexture->GetBindlessTextureHandle(); }
 
                 // Clearcoat Texture
                 std::shared_ptr<Texture2DObject> clearcoatTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::ClearcoatTexture);
-                if (clearcoatTexture) { materialSave.ClearcoatTextureHandle = clearcoatTexture->GetBindlessTextureHandle(); }
+                if (clearcoatTexture) { materialSave.clearcoatTextureHandle = clearcoatTexture->GetBindlessTextureHandle(); }
 
                 // Clearcoat Roughness Texture
                 std::shared_ptr<Texture2DObject> clearcoatRoughnessTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::ClearcoatRoughnessTexture);
-                if (clearcoatRoughnessTexture) { materialSave.ClearcoatRoughnessTextureHandle = clearcoatRoughnessTexture->GetBindlessTextureHandle(); }
+                if (clearcoatRoughnessTexture) { materialSave.clearcoatRoughnessTextureHandle = clearcoatRoughnessTexture->GetBindlessTextureHandle(); }
 
-                // Clearcoat Normal Texture
-                std::shared_ptr<Texture2DObject> clearcoatNormalTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::ClearcoatNormalTexture);
-                if (clearcoatNormalTexture) { materialSave.ClearcoatNormalTextureHandle = clearcoatNormalTexture->GetBindlessTextureHandle(); }
-                
                 // Transmission Texture
                 std::shared_ptr<Texture2DObject> transmissionTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::TransmissionTexture);
-                if (transmissionTexture) { materialSave.TransmissionTextureHandle = transmissionTexture->GetBindlessTextureHandle(); }
-
-                // Emissive Texture
-                std::shared_ptr<Texture2DObject> emissiveTexture = material.GetMaterialTexture(Material::MaterialTextureSlot::EmissiveTexture);
-                if (emissiveTexture) { materialSave.EmissiveTextureHandle = emissiveTexture->GetBindlessTextureHandle(); }
+                if (transmissionTexture) { materialSave.transmissionTextureHandle = transmissionTexture->GetBindlessTextureHandle(); }
 
                 // Get material attributes
                 Material::MaterialAttributes materialAttributes = material.GetMaterialAttributes();
 
                 // Translate attributes
+                materialSave.emission = materialAttributes.emission;
                 materialSave.albedo = materialAttributes.albedo;
                 materialSave.specular = materialAttributes.specular;
-                materialSave.specularColor = materialAttributes.specularColor;
+                materialSave.specularTint = materialAttributes.specularTint;
                 materialSave.metallic = materialAttributes.metallic;
                 materialSave.roughness = materialAttributes.roughness;
                 materialSave.subsurface = materialAttributes.subsurface;
-                materialSave.subsurfaceColor = materialAttributes.subsurfaceColor;
                 materialSave.anisotropy = materialAttributes.anisotropy;
                 materialSave.sheenRoughness = materialAttributes.sheenRoughness;
-                materialSave.sheenColor = materialAttributes.sheenColor;
+                materialSave.sheenTint = materialAttributes.sheenTint;
                 materialSave.clearcoat = materialAttributes.clearcoat;
                 materialSave.clearcoatRoughness = materialAttributes.clearcoatRoughness;
                 materialSave.refraction = materialAttributes.refraction;
                 materialSave.transmission = materialAttributes.transmission;
-                materialSave.emissiveColor = materialAttributes.emissiveColor;
 
                 // Push
                 m_materialsSaved.push_back(materialSave);
@@ -453,7 +446,6 @@ void PathTracingRenderPass::InitializeBuffers()
 
     // Environment allocation
     {
-
         // Create SSBO for environment
         m_ssboEnvironment = std::make_shared<ShaderStorageBufferObject>();
         m_ssboEnvironment->Bind();
@@ -462,34 +454,34 @@ void PathTracingRenderPass::InitializeBuffers()
         glBindBufferBase(m_ssboEnvironment->GetTarget(), 1, m_ssboEnvironment->GetHandle()); // Binding index: 1
 
         // Get HDRI
-        std::shared_ptr<Texture2DObject> HDRI = m_pathTracingApplication->GetHDRI();
+        std::shared_ptr<Texture2DObject> hdri = m_pathTracingApplication->GetHdri();
 
         // Start timer
         Timer timer("HDRI Cache");
 
         // Calculate and save HDRI Cache
-        int HDRIWidth, HDRIHeight;
-        m_HDRICache = CalculateHDRICache(HDRI, HDRIWidth, HDRIHeight);
+        int hdriWidth, hdriHeight;
+        m_hdriCache = CalculateHdriCache(hdri, hdriWidth, hdriHeight);
 
         // End time point in milliseconds and print
         timer.Stop();
         timer.Print();
 
         // Get HDRI handle
-        const GLuint64 HDRIHandle = HDRI->GetBindlessTextureHandle();
-        if (HDRIHandle == 0) { throw new std::runtime_error("Error! HDRI Handle returned null"); }
-        m_HDRIHandle = HDRIHandle;
+        const GLuint64 hdriHandle = hdri->GetBindlessTextureHandle();
+        if (hdriHandle == 0) { throw new std::runtime_error("Error! HDRI Handle returned null"); }
+        m_hdriHandle = hdriHandle;
 
         // Get HDRI Cache handle
-        const GLuint64 HDRICacheHandle = m_HDRICache->GetBindlessTextureHandle();
-        if (HDRICacheHandle == 0) { throw new std::runtime_error("Error! HDRI Cache Handle returned null"); }
-        m_HDRICacheHandle = HDRICacheHandle;
+        const GLuint64 hdriCacheHandle = m_hdriCache->GetBindlessTextureHandle();
+        if (hdriCacheHandle == 0) { throw new std::runtime_error("Error! HDRI Cache Handle returned null"); }
+        m_hdriCacheHandle = hdriCacheHandle;
 
         // Environment
         EnvironmentAlign environment { };
-        environment.HDRIHandle = HDRIHandle;
-        environment.HDRICacheHandle = HDRICacheHandle;
-        environment.HDRIDimensions = glm::vec2(float(HDRIWidth), float(HDRIHeight));
+        environment.hdriHandle = hdriHandle;
+        environment.hdriCacheHandle = hdriCacheHandle;
+        environment.hdriDimensions = glm::vec2(float(hdriWidth), float(hdriHeight));
 
         // Convert to span
         std::span<EnvironmentAlign> span = std::span(&environment, 1);
@@ -516,35 +508,33 @@ void PathTracingRenderPass::InitializeBuffers()
             MaterialAlign materialAlign{ };
 
             // Texture handles
-            materialAlign.AlbedoTextureHandle = materialSave.AlbedoTextureHandle;
-            materialAlign.NormalTextureHandle = materialSave.NormalTextureHandle;
-            materialAlign.SpecularTextureHandle = materialSave.SpecularTextureHandle;
-            materialAlign.SpecularColorTextureHandle = materialSave.SpecularColorTextureHandle;
-            materialAlign.MetallicRoughnessTextureHandle = materialSave.MetallicRoughnessTextureHandle;
-            materialAlign.SheenRoughnessTextureHandle = materialSave.SheenRoughnessTextureHandle;
-            materialAlign.SheenColorTextureHandle = materialSave.SheenColorTextureHandle;
-            materialAlign.ClearcoatTextureHandle = materialSave.ClearcoatTextureHandle;
-            materialAlign.ClearcoatRoughnessTextureHandle = materialSave.ClearcoatRoughnessTextureHandle;
-            materialAlign.ClearcoatNormalTextureHandle = materialSave.ClearcoatNormalTextureHandle;
-            materialAlign.TransmissionTextureHandle = materialSave.TransmissionTextureHandle;
-            materialAlign.EmissiveTextureHandle = materialSave.EmissiveTextureHandle;
+            materialAlign.emissionTextureHandle = materialSave.emissionTextureHandle;
+            materialAlign.albedoTextureHandle = materialSave.albedoTextureHandle;
+            materialAlign.normalTextureHandle = materialSave.normalTextureHandle;
+            materialAlign.specularTextureHandle = materialSave.specularTextureHandle;
+            materialAlign.specularColorTextureHandle = materialSave.specularColorTextureHandle;
+            materialAlign.metallicRoughnessTextureHandle = materialSave.metallicRoughnessTextureHandle;
+            materialAlign.sheenRoughnessTextureHandle = materialSave.sheenRoughnessTextureHandle;
+            materialAlign.sheenColorTextureHandle = materialSave.sheenColorTextureHandle;
+            materialAlign.clearcoatTextureHandle = materialSave.clearcoatTextureHandle;
+            materialAlign.clearcoatRoughnessTextureHandle = materialSave.clearcoatRoughnessTextureHandle;
+            materialAlign.transmissionTextureHandle = materialSave.transmissionTextureHandle;
 
             // Attributes
+            materialAlign.emission = materialSave.emission;
             materialAlign.albedo = materialSave.albedo;
             materialAlign.specular = materialSave.specular;
-            materialAlign.specularColor = materialSave.specularColor;
+            materialAlign.specularTint = materialSave.specularTint;
             materialAlign.metallic = materialSave.metallic;
             materialAlign.roughness = materialSave.roughness;
             materialAlign.subsurface = materialSave.subsurface;
-            materialAlign.subsurfaceColor = materialSave.subsurfaceColor;
             materialAlign.anisotropy = materialSave.anisotropy;
             materialAlign.sheenRoughness = materialSave.sheenRoughness;
-            materialAlign.sheenColor = materialSave.sheenColor;
+            materialAlign.sheenTint = materialSave.sheenTint;
             materialAlign.clearcoat = materialSave.clearcoat;
             materialAlign.clearcoatRoughness = materialSave.clearcoatRoughness;
             materialAlign.refraction = materialSave.refraction;
             materialAlign.transmission = materialSave.transmission;
-            materialAlign.emissiveColor = materialSave.emissiveColor;
 
             // Push
             materialsAlign.push_back(materialAlign);
@@ -563,7 +553,7 @@ void PathTracingRenderPass::InitializeBuffers()
     {
         // Convert corrosponding vertices to a format that BVH can use to build BVH nodes
 
-        std::vector<BVH::BVHPrimitive> BVHPrimitives;
+        std::vector<BVH::BvhPrimitive> bvhPrimitives;
         for (unsigned int meshIndex = 0; meshIndex < totalIndexData.size(); meshIndex++) 
         {
             const std::vector<VertexSave>& vertexData = totalVertexData[meshIndex];
@@ -575,7 +565,7 @@ void PathTracingRenderPass::InitializeBuffers()
                 unsigned int index2 = indexData[i + 1];
                 unsigned int index3 = indexData[i + 2];
 
-                BVH::BVHPrimitive primitive { };
+                BVH::BvhPrimitive primitive { };
 
                 primitive.posA = vertexData[index1].pos;
                 primitive.posB = vertexData[index2].pos;
@@ -592,39 +582,39 @@ void PathTracingRenderPass::InitializeBuffers()
                 primitive.meshIndex = meshIndex;
 
                 // Push
-                BVHPrimitives.push_back(primitive);
+                bvhPrimitives.push_back(primitive);
             }
         }
 
         // Create SSBO for BVH nodes
         {
             // Create SSBO for BVH nodes
-            m_ssboBVHNodes = std::make_shared<ShaderStorageBufferObject>();
-            m_ssboBVHNodes->Bind();
+            m_ssboBvhNodes = std::make_shared<ShaderStorageBufferObject>();
+            m_ssboBvhNodes->Bind();
 
             // Binding index
-            glBindBufferBase(m_ssboBVHNodes->GetTarget(), 3, m_ssboBVHNodes->GetHandle()); // Binding index: 3
+            glBindBufferBase(m_ssboBvhNodes->GetTarget(), 3, m_ssboBvhNodes->GetHandle()); // Binding index: 3
 
             // Initialize BVH nodes
-            BVH::BVHNode InitNode{ };
-            std::vector<BVH::BVHNode> BVHNodes{ InitNode };
+            BVH::BvhNode initNode{ };
+            std::vector<BVH::BvhNode> bvhNodes{ initNode };
 
             // Start timer
             Timer timer("BVH Calculation");
 
             // Calculate BVH
-            //BVH::BuildBVH(BVHPrimitives, BVHNodes, 0, (int)BVHPrimitives.size() - 1, 8);
-            BVH::BuildBVHWithSAH(BVHPrimitives, BVHNodes, 0, (int)BVHPrimitives.size() - 1, 8);
+            //BVH::BuildBvh(bvhPrimitives, bvhNodes, 0, (int)bvhPrimitives.size() - 1, 4);
+            BVH::BuildBvhWithSah(bvhPrimitives, bvhNodes, 0, (int)bvhPrimitives.size() - 1, 4);
 
             // End time point in milliseconds and print
             timer.Stop();
             timer.Print();
 
             // Align BVH nodes
-            std::vector<BVH::BVHNodeAlign> BVHNodesAligned;
-            for (const BVH::BVHNode& node : BVHNodes)
+            std::vector<BVH::BvhNodeAlign> bvhNodesAligned;
+            for (const BVH::BvhNode& node : bvhNodes)
             {
-                BVH::BVHNodeAlign nodeAligned { };
+                BVH::BvhNodeAlign nodeAligned { };
 
                 nodeAligned.left = node.left;
                 nodeAligned.right = node.right;
@@ -634,29 +624,29 @@ void PathTracingRenderPass::InitializeBuffers()
                 nodeAligned.BB = node.BB;
 
                 // Add
-                BVHNodesAligned.push_back(nodeAligned);
+                bvhNodesAligned.push_back(nodeAligned);
             }
 
             // Convert to span
-            std::span<BVH::BVHNodeAlign> span = std::span(BVHNodesAligned);
+            std::span<BVH::BvhNodeAlign> span = std::span(bvhNodesAligned);
 
             // Allocate
-            m_ssboBVHNodes->AllocateData(span);
-            m_ssboBVHNodes->Unbind();
+            m_ssboBvhNodes->AllocateData(span);
+            m_ssboBvhNodes->Unbind();
         }
 
         // Create SSBO for BVH primitives
         {
             // Create SSBO for BVH primitives
-            m_ssboBVHPrimitives = std::make_shared<ShaderStorageBufferObject>();
-            m_ssboBVHPrimitives->Bind();
+            m_ssboBvhPrimitives = std::make_shared<ShaderStorageBufferObject>();
+            m_ssboBvhPrimitives->Bind();
 
             // Binding index
-            glBindBufferBase(m_ssboBVHPrimitives->GetTarget(), 4, m_ssboBVHPrimitives->GetHandle()); // Binding index: 4
+            glBindBufferBase(m_ssboBvhPrimitives->GetTarget(), 4, m_ssboBvhPrimitives->GetHandle()); // Binding index: 4
 
             // Align BVH primitives
-            std::vector<BVH::BVHPrimitiveAlign> BVHPrimitivesAligned;
-            for (const BVH::BVHPrimitive& primitive : BVHPrimitives)
+            std::vector<BVH::BvhPrimitiveAlign> bvhPrimitivesAligned;
+            for (const BVH::BvhPrimitive& primitive : bvhPrimitives)
             {
                 glm::vec3 posA = primitive.posA;
                 glm::vec3 posB = primitive.posB;
@@ -670,7 +660,7 @@ void PathTracingRenderPass::InitializeBuffers()
                 glm::vec2 uvB = primitive.uvB;
                 glm::vec2 uvC = primitive.uvC;
                 
-                BVH::BVHPrimitiveAlign primitiveAligned{ };
+                BVH::BvhPrimitiveAlign primitiveAligned{ };
 
                 primitiveAligned.posAuvX = glm::vec4(posA, uvA.x);
                 primitiveAligned.norAuvY = glm::vec4(norA, uvA.y);
@@ -684,15 +674,15 @@ void PathTracingRenderPass::InitializeBuffers()
                 primitiveAligned.meshIndex = primitive.meshIndex;
 
                 // Push
-                BVHPrimitivesAligned.push_back(primitiveAligned);
+                bvhPrimitivesAligned.push_back(primitiveAligned);
             }
 
             // Convert to span
-            std::span<BVH::BVHPrimitiveAlign> span = std::span(BVHPrimitivesAligned);
+            std::span<BVH::BvhPrimitiveAlign> span = std::span(bvhPrimitivesAligned);
 
             // Allocate
-            m_ssboBVHPrimitives->AllocateData(span);
-            m_ssboBVHPrimitives->Unbind();
+            m_ssboBvhPrimitives->AllocateData(span);
+            m_ssboBvhPrimitives->Unbind();
         }
     }
 }
@@ -818,14 +808,14 @@ std::vector<T> PathTracingRenderPass::FlattenVector(const std::vector<std::vecto
     return flattenedVector;
 }
 
-std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::shared_ptr<Texture2DObject> HDRI, int& width, int& height)
+std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHdriCache(std::shared_ptr<Texture2DObject> hdri, int& width, int& height)
 {
     // Bind texture
-    HDRI->Bind();
+    hdri->Bind();
 
     // Get the internal format of the texture
     int internalFormat;
-    HDRI->GetParameter(0, TextureObject::ParameterInt::InternalFormat, internalFormat);
+    hdri->GetParameter(0, TextureObject::ParameterInt::InternalFormat, internalFormat);
 
     // Check if the texture is RGB and HDR
     // The following code assumes 3 components of RGB...
@@ -835,15 +825,15 @@ std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::
     }
 
     // Get texture dimensions
-    HDRI->GetParameter(0, TextureObject::ParameterInt::Width, width);
-    HDRI->GetParameter(0, TextureObject::ParameterInt::Height, height);
+    hdri->GetParameter(0, TextureObject::ParameterInt::Width, width);
+    hdri->GetParameter(0, TextureObject::ParameterInt::Height, height);
 
     // Retrieve the HDR texture data
     std::vector<float> textureData(width * height * 3);
-    HDRI->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, textureData.data());
+    hdri->GetTextureData(0, TextureObject::Format::FormatRGB, Data::Type::Float, textureData.data());
     
     // We're done retrieving information
-    HDRI->Unbind();
+    hdri->Unbind();
 
     float lumSum = 0.0f;
 
@@ -920,10 +910,10 @@ std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::
             float xi_2 = float(j) / width;
 
             // Use xi_1 to find the lower bound in cdf_x_margin to obtain sample x
-            int x = std::lower_bound(cdf_x_margin.begin(), cdf_x_margin.end(), xi_1) - cdf_x_margin.begin();
+            __int64 x = std::lower_bound(cdf_x_margin.begin(), cdf_x_margin.end(), xi_1) - cdf_x_margin.begin();
             
             // Use xi_2 to obtain the sample y given X = x
-            int y = std::lower_bound(cdf_y_condiciton[x].begin(), cdf_y_condiciton[x].end(), xi_2) - cdf_y_condiciton[x].begin();
+            __int64 y = std::lower_bound(cdf_y_condiciton[x].begin(), cdf_y_condiciton[x].end(), xi_2) - cdf_y_condiciton[x].begin();
 
             // Store the texture coordinates xy and the probability density corresponding to the xy position
             sample_x[i][j] = float(x) / width;
@@ -949,13 +939,13 @@ std::shared_ptr<Texture2DObject> PathTracingRenderPass::CalculateHDRICache(std::
     std::span<const float> dataSpanFloat(cache, width * height * 3);
     std::span<const std::byte> data = Data::GetBytes(dataSpanFloat);
 
-    // Create HDRICache texture
-    std::shared_ptr<Texture2DObject> HDRICache = std::make_shared<Texture2DObject>();
-    HDRICache->Bind();
-    HDRICache->SetImage(0, width, height, TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F, data, Data::Type::Float);
-    HDRICache->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_LINEAR);
-    HDRICache->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_LINEAR);
-    HDRICache->Unbind();
+    // Create hdriCache texture
+    std::shared_ptr<Texture2DObject> hdriCache = std::make_shared<Texture2DObject>();
+    hdriCache->Bind();
+    hdriCache->SetImage(0, width, height, TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F, data, Data::Type::Float);
+    hdriCache->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_LINEAR);
+    hdriCache->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_LINEAR);
+    hdriCache->Unbind();
 
-    return HDRICache;
+    return hdriCache;
 }

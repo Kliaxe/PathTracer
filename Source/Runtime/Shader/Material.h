@@ -25,6 +25,7 @@ public:
     // Avaliable textures for this material
     enum MaterialTextureSlot
     {
+        EmissionTexture,
         AlbedoTexture,
         NormalTexture,
         SpecularTexture,
@@ -34,30 +35,27 @@ public:
         SheenColorTexture,
         ClearcoatTexture,
         ClearcoatRoughnessTexture,
-        ClearcoatNormalTexture,
         TransmissionTexture,
-        EmissiveTexture,
         TextureSlotCount,
     };
 
     // Avaliable attributes for this material
     struct MaterialAttributes
     {
+		glm::vec3 emission = glm::vec3(0.0f, 0.0f, 0.0f);
 		glm::vec3 albedo = glm::vec3(1.0f, 1.0f, 1.0f);
 		float specular = 1.0f;
-		glm::vec3 specularColor = glm::vec3(1.0f, 1.0f, 1.0f);
+		float specularTint = 0.0f;
 		float metallic = 0.0f;
 		float roughness = 1.0f;
 		float subsurface = 0.0f;
-		glm::vec3 subsurfaceColor = glm::vec3(0.5f, 0.5f, 0.5f);
 		float anisotropy = 0.0f;
 		float sheenRoughness = 0.0f;
-		glm::vec3 sheenColor = glm::vec3(0.0f, 0.0f, 0.0f);
+        float sheenTint = 0.0f;
 		float clearcoat = 0.0f;
 		float clearcoatRoughness = 0.0f;
-		float refraction = 1.0f;
+		float refraction = 1.5f;
 		float transmission = 0.0f;
-		glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
     };
 
     // Different conditions for depth and stencil tests

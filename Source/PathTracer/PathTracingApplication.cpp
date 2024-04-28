@@ -25,7 +25,7 @@
 PathTracingApplication::PathTracingApplication()
     : Application(1024, 1024, "PathTracer")
     , m_frameCount(0)
-    , m_maxFrameCount(25)
+    , m_maxFrameCount(50)
     , m_shouldRasterizeAsPreview(false)
     , m_shouldPathTrace(false)
     , m_shouldDenoise(false)
@@ -152,10 +152,10 @@ void PathTracingApplication::InvalidateScene()
 
 void PathTracingApplication::InitializeHDRI()
 {
-    m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/BrownPhotostudio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
-    //m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/ChineseGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
-    //m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/Meadow.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
-    //m_HDRI = Texture2DLoader::LoadTextureShared("Content/HDRI/SymmetricalGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    m_Hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/BrownPhotostudio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    //m_Hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/ChineseGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    //m_Hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/Meadow.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    //m_Hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/SymmetricalGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
 }
 
 void PathTracingApplication::InitializeModel()
@@ -218,7 +218,7 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Cone.glb"));
     //m_models.push_back(loader.Load("Content/Models/Cube.glb"));
     //m_models.push_back(loader.Load("Content/Models/Dragon.glb"));
-    m_models.push_back(loader.Load("Content/Models/Floor.glb"));
+    //m_models.push_back(loader.Load("Content/Models/Floor.glb"));
     //m_models.push_back(loader.Load("Content/Models/Icosphere.glb"));
     //m_models.push_back(loader.Load("Content/Models/Plane.glb"));
     //m_models.push_back(loader.Load("Content/Models/Sphere.glb"));
@@ -226,22 +226,47 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
 
     {
+        // Specify material attributes
+        Material::MaterialAttributes floorMaterialAttributes{ };
+        floorMaterialAttributes.albedo = glm::vec3(1.0f, 1.0f, 1.0f) * 0.5f;
+        //floorMaterialAttributes.metallic = 1.0f;
+        floorMaterialAttributes.roughness = 0.01f;
+
+        Model floorModel = loader.Load("Content/Models/Floor.glb");
+        
+        // Set material attributes
+        std::shared_ptr<Material> floorMaterial = std::make_shared<Material>(floorModel.GetMaterial(0));
+        floorMaterial->SetMaterialAttributes(floorMaterialAttributes);
+        floorModel.SetMaterial(0, floorMaterial);
+
+        m_models.push_back(floorModel);
+    }
+    {
+        // Specify material attributes
         Material::MaterialAttributes bunnyMaterialAttributes{ };
+        bunnyMaterialAttributes.albedo = glm::vec3(0.4f, 1.0f, 0.0f);
         //bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f);
-        bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.7f;
+        //bunnyMaterialAttributes.albedo = glm::vec3(0.6f, 0.0f, 1.0f);
         //bunnyMaterialAttributes.specular = 0.05f;
         //bunnyMaterialAttributes.metallic = 1.0f;
         bunnyMaterialAttributes.roughness = 0.05f;
+        //bunnyMaterialAttributes.clearcoat = 1.0f;
+        //bunnyMaterialAttributes.clearcoatRoughness = 0.05f;
         //bunnyMaterialAttributes.subsurface = 2.0f;
+        bunnyMaterialAttributes.transmission = 1.0f;
+        bunnyMaterialAttributes.refraction = 1.5f;
 
-        //Model model = loader.Load("Content/Models/Sphere.glb");
-        Model model = loader.Load("Content/Models/Bunny.glb");
+        Model bunnyModel = loader.Load("Content/Models/Bunny.glb");
+        //Model bunnyModel = loader.Load("Content/Models/Cone.glb");
+        //Model bunnyModel = loader.Load("Content/Models/Dragon.glb");
+        //Model bunnyModel = loader.Load("Content/Models/Sphere.glb");
 
-        std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(model.GetMaterial(0));
+        // Set material attributes
+        std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(bunnyModel.GetMaterial(0));
         bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
-        model.SetMaterial(0, bunnyMaterial);
+        bunnyModel.SetMaterial(0, bunnyMaterial);
 
-        m_models.push_back(model);
+        m_models.push_back(bunnyModel);
     }
 }
 
@@ -407,8 +432,8 @@ void PathTracingApplication::RenderGUI()
         changed |= ImGui::SliderFloat("Aperture Size", (float*)(&m_apertureSize), 0.0f, 1.0f);
         changed |= ImGui::SliderFloat2("Aperture Shape", (float*)(&m_apertureShape), 0.0f, 1.0f);
 
-        changed |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 25.0f);
-        changed |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 25.0f);
+        changed |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 10.0f);
+        changed |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 10.0f);
     }
 
     if (changed)

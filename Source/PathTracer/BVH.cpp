@@ -3,27 +3,27 @@
 
 #define INF 114514.0f
 
-bool CompareX(const BVH::BVHPrimitive& t1, const BVH::BVHPrimitive& t2)
+bool CompareX(const BVH::BvhPrimitive& t1, const BVH::BvhPrimitive& t2)
 {
 	glm::vec3 center1 = (t1.posA + t1.posB + t1.posC) / glm::vec3(3.0f, 3.0f, 3.0f);
 	glm::vec3 center2 = (t2.posA + t2.posB + t2.posC) / glm::vec3(3.0f, 3.0f, 3.0f);
 	return center1.x < center2.x;
 }
 
-bool CompareY(const BVH::BVHPrimitive& t1, const BVH::BVHPrimitive& t2) {
+bool CompareY(const BVH::BvhPrimitive& t1, const BVH::BvhPrimitive& t2) {
 	glm::vec3 center1 = (t1.posA + t1.posB + t1.posC) / glm::vec3(3.0f, 3.0f, 3.0f);
 	glm::vec3 center2 = (t2.posA + t2.posB + t2.posC) / glm::vec3(3.0f, 3.0f, 3.0f);
 	return center1.y < center2.y;
 }
 
-bool CompareZ(const BVH::BVHPrimitive& t1, const BVH::BVHPrimitive& t2)
+bool CompareZ(const BVH::BvhPrimitive& t1, const BVH::BvhPrimitive& t2)
 {
 	glm::vec3 center1 = (t1.posA + t1.posB + t1.posC) / glm::vec3(3.0f, 3.0f, 3.0f);
 	glm::vec3 center2 = (t2.posA + t2.posB + t2.posC) / glm::vec3(3.0f, 3.0f, 3.0f);
 	return center1.z < center2.z;
 }
 
-int BVH::BuildBVH(std::vector<BVHPrimitive>& primitives, std::vector<BVHNode>& nodes, int l, int r, int n)
+int BVH::BuildBvh(std::vector<BvhPrimitive>& primitives, std::vector<BvhNode>& nodes, int l, int r, int n)
 {
     if (l > r) return 0;
 
@@ -31,8 +31,8 @@ int BVH::BuildBVH(std::vector<BVHPrimitive>& primitives, std::vector<BVHNode>& n
     // This cannot be operated by pointers, references, etc., and nodes[id] must be used to operate.
     // Because std::vector<> will be copied to a larger memory when it is expanded, then the address will change.
     // Pointers and references all point to the original memory, so an error will occur.
-    nodes.push_back(BVHNode());
-    int id = nodes.size() - 1;
+    nodes.push_back(BvhNode());
+    size_t id = nodes.size() - 1;
 
     // Initialize values
     nodes[id].left = nodes[id].right = nodes[id].n = nodes[id].index = 0;
@@ -64,7 +64,7 @@ int BVH::BuildBVH(std::vector<BVHPrimitive>& primitives, std::vector<BVHNode>& n
     {
         nodes[id].n = r - l + 1;
         nodes[id].index = l;
-        return id;
+        return int(id);
     }
 
     // Else recursively build the tree
@@ -79,21 +79,21 @@ int BVH::BuildBVH(std::vector<BVHPrimitive>& primitives, std::vector<BVHNode>& n
 
     // Recursion
     int mid = (l + r) / 2;
-    int left = BuildBVH(primitives, nodes, l, mid, n);
-    int right = BuildBVH(primitives, nodes, mid + 1, r, n);
+    int left = BuildBvh(primitives, nodes, l, mid, n);
+    int right = BuildBvh(primitives, nodes, mid + 1, r, n);
 
     nodes[id].left = left;
     nodes[id].right = right;
 
-    return id;
+    return int(id);
 }
 
-int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHNode>& nodes, int l, int r, int n)
+int BVH::BuildBvhWithSah(std::vector<BvhPrimitive>& primitives, std::vector<BvhNode>& nodes, int l, int r, int n)
 {
     if (l > r) return 0;
 
-    nodes.push_back(BVHNode());
-    int id = nodes.size() - 1;
+    nodes.push_back(BvhNode());
+    size_t id = nodes.size() - 1;
 
     // Initialize values
     nodes[id].left = nodes[id].right = nodes[id].n = nodes[id].index = 0;
@@ -125,7 +125,7 @@ int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHN
     {
         nodes[id].n = r - l + 1;
         nodes[id].index = l;
-        return id;
+        return int(id);
     }
 
     // Else recursively build the tree
@@ -147,7 +147,7 @@ int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHN
         // Compute prefixes node i-l to align to index 0
         for (int i = l; i <= r; i++) 
         {
-            BVHPrimitive& t = primitives[i];
+            BvhPrimitive& t = primitives[i];
             int bias = (i == l) ? 0 : 1;  // Bias for the first element
 
             leftMax[i - l].x = glm::max(leftMax[i - l - bias].x, glm::max(t.posA.x, glm::max(t.posB.x, t.posC.x)));
@@ -167,7 +167,7 @@ int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHN
         // Compute suffixes node i-l to align to index 0
         for (int i = r; i >= l; i--) 
         {
-            BVHPrimitive& t = primitives[i];
+            BvhPrimitive& t = primitives[i];
             int bias = (i == r) ? 0 : 1;  // Bias for the first element
 
             rightMax[i - l].x = glm::max(rightMax[i - l + bias].x, glm::max(t.posA.x, glm::max(t.posB.x, t.posC.x)));
@@ -192,7 +192,7 @@ int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHN
             lenx = leftBB.x - leftAA.x;
             leny = leftBB.y - leftAA.y;
             lenz = leftBB.z - leftAA.z;
-            float leftS = 2.0 * ((lenx * leny) + (lenx * lenz) + (leny * lenz));
+            float leftS = 2.0f * ((lenx * leny) + (lenx * lenz) + (leny * lenz));
             float leftCost = leftS * (i - l + 1);
 
             // Right side [i+1, r]
@@ -201,7 +201,7 @@ int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHN
             lenx = rightBB.x - rightAA.x;
             leny = rightBB.y - rightAA.y;
             lenz = rightBB.z - rightAA.z;
-            float rightS = 2.0 * ((lenx * leny) + (lenx * lenz) + (leny * lenz));
+            float rightS = 2.0f * ((lenx * leny) + (lenx * lenz) + (leny * lenz));
             float rightCost = rightS * (r - i);
 
             // Save the minimum result for each split
@@ -228,11 +228,11 @@ int BVH::BuildBVHWithSAH(std::vector<BVHPrimitive>& primitives, std::vector<BVHN
     if (Axis == 2) std::sort(&primitives[0] + l, &primitives[0] + r + 1, CompareZ);
 
     // Recursion
-    int left = BuildBVHWithSAH(primitives, nodes, l, Split, n);
-    int right = BuildBVHWithSAH(primitives, nodes, Split + 1, r, n);
+    int left = BuildBvhWithSah(primitives, nodes, l, Split, n);
+    int right = BuildBvhWithSah(primitives, nodes, Split + 1, r, n);
 
     nodes[id].left = left;
     nodes[id].right = right;
 
-    return id;
+    return int(id);
 }

@@ -197,6 +197,9 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
 
     // Load textures to material 
 
+    // Emission Texture
+    LoadMaterialTexture(materialData, aiTextureType_EMISSIVE, 0, *material, Material::MaterialTextureSlot::EmissionTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
+
     // Albedo Texture
     LoadMaterialTexture(materialData, AI_MATKEY_BASE_COLOR_TEXTURE, *material, Material::MaterialTextureSlot::AlbedoTexture, TextureObject::FormatRGB, TextureObject::InternalFormatSRGB8);
     
@@ -224,15 +227,9 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     // Clearcoat Roughness Texture
     LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_ROUGHNESS_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatRoughnessTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
-    // Clearcoat Normal Texture
-    LoadMaterialTexture(materialData, AI_MATKEY_CLEARCOAT_NORMAL_TEXTURE, *material, Material::MaterialTextureSlot::ClearcoatNormalTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
-    
     // Transmission Texture
     LoadMaterialTexture(materialData, AI_MATKEY_TRANSMISSION_TEXTURE, *material, Material::MaterialTextureSlot::TransmissionTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
     
-    // Emissive Texture
-    LoadMaterialTexture(materialData, aiTextureType_EMISSIVE, 0, *material, Material::MaterialTextureSlot::EmissiveTexture, TextureObject::FormatRGB, TextureObject::InternalFormatRGB8);
-
     // Load attributes to material
     
     Material::MaterialAttributes materialAttributes{ };
@@ -240,14 +237,17 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     float value;
     aiColor3D color;
     
+    // Emission
+    if (materialData.Get(AI_MATKEY_COLOR_EMISSIVE, color) == aiReturn_SUCCESS) { materialAttributes.emission = glm::vec3(color.r, color.g, color.b); }
+
     // Albedo
     if (materialData.Get(AI_MATKEY_BASE_COLOR, color) == aiReturn_SUCCESS) { materialAttributes.albedo = glm::vec3(color.r, color.g, color.b); }
     
     // Specular
     if (materialData.Get(AI_MATKEY_SPECULAR_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.specular = value; }
         
-    // Specular Color
-    if (materialData.Get(AI_MATKEY_COLOR_SPECULAR, color) == aiReturn_SUCCESS) { materialAttributes.specularColor = glm::vec3(color.r, color.g, color.b); }
+    // Specular Tint
+    if (materialData.Get(AI_MATKEY_COLOR_SPECULAR, color) == aiReturn_SUCCESS) { materialAttributes.specularTint = glm::length(glm::vec3(color.r, color.g, color.b)); }
     
     // Metallic
     if (materialData.Get(AI_MATKEY_METALLIC_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.metallic = value; }
@@ -262,8 +262,8 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     // Sheen Roughness
     if (materialData.Get(AI_MATKEY_SHEEN_ROUGHNESS_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.sheenRoughness = value; }
 
-    // Sheen Color
-    if (materialData.Get(AI_MATKEY_SHEEN_COLOR_FACTOR, color) == aiReturn_SUCCESS) { materialAttributes.sheenColor = glm::vec3(color.r, color.g, color.b); }    
+    // Sheen Tint
+    if (materialData.Get(AI_MATKEY_SHEEN_COLOR_FACTOR, color) == aiReturn_SUCCESS) { materialAttributes.sheenTint = glm::length(glm::vec3(color.r, color.g, color.b)); }    
 
     // Clearcoat
     if (materialData.Get(AI_MATKEY_CLEARCOAT_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.clearcoat = value; }
@@ -271,14 +271,11 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     // Clearcoat Roughness
     if (materialData.Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.clearcoatRoughness = value; }
     
-    // IOR
+    // Refraction
     if (materialData.Get(AI_MATKEY_REFRACTI, value) == aiReturn_SUCCESS) { materialAttributes.refraction = value; }
 
     // Transmission
     if (materialData.Get(AI_MATKEY_TRANSMISSION_FACTOR, value) == aiReturn_SUCCESS) { materialAttributes.transmission = value; }
-
-    // Emissive Color
-    if (materialData.Get(AI_MATKEY_COLOR_EMISSIVE, color) == aiReturn_SUCCESS) { materialAttributes.emissiveColor = glm::vec3(color.r, color.g, color.b); }
 
     // Finally, assign attributes to material
     material->SetMaterialAttributes(materialAttributes);

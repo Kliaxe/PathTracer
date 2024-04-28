@@ -42,7 +42,7 @@ private:
     template<typename T>
     std::vector<T> FlattenVector(const std::vector<std::vector<T>>& nestedVector);
 
-    std::shared_ptr<Texture2DObject> CalculateHDRICache(std::shared_ptr<Texture2DObject> HDRI, int& width, int& height);
+    std::shared_ptr<Texture2DObject> CalculateHdriCache(std::shared_ptr<Texture2DObject> hdri, int& width, int& height);
 
 private:
     // Materials
@@ -70,35 +70,33 @@ private:
     struct MaterialSave
     {
         // Texture handles
-        GLuint64 AlbedoTextureHandle = 0;
-        GLuint64 NormalTextureHandle = 0;
-        GLuint64 SpecularTextureHandle = 0;
-        GLuint64 SpecularColorTextureHandle = 0;
-        GLuint64 MetallicRoughnessTextureHandle = 0;
-        GLuint64 SheenRoughnessTextureHandle = 0;
-        GLuint64 SheenColorTextureHandle = 0;
-        GLuint64 ClearcoatTextureHandle = 0;
-        GLuint64 ClearcoatRoughnessTextureHandle = 0;
-        GLuint64 ClearcoatNormalTextureHandle = 0;
-        GLuint64 TransmissionTextureHandle = 0;
-        GLuint64 EmissiveTextureHandle = 0;
+        GLuint64 emissionTextureHandle = 0;
+        GLuint64 albedoTextureHandle = 0;
+        GLuint64 normalTextureHandle = 0;
+        GLuint64 specularTextureHandle = 0;
+        GLuint64 specularColorTextureHandle = 0;
+        GLuint64 metallicRoughnessTextureHandle = 0;
+        GLuint64 sheenRoughnessTextureHandle = 0;
+        GLuint64 sheenColorTextureHandle = 0;
+        GLuint64 clearcoatTextureHandle = 0;
+        GLuint64 clearcoatRoughnessTextureHandle = 0;
+        GLuint64 transmissionTextureHandle = 0;
 
         // Attributes
+        glm::vec3 emission = glm::vec3(0.0f, 0.0f, 0.0f);
         glm::vec3 albedo = glm::vec3(1.0f, 1.0f, 1.0f);
-        float specular = 1.0f;
-        glm::vec3 specularColor = glm::vec3(1.0f, 1.0f, 1.0f);
+        float specular = 0.5f;
+        float specularTint = 0.0f;
         float metallic = 0.0f;
         float roughness = 1.0f;
         float subsurface = 0.0f;
-        glm::vec3 subsurfaceColor = glm::vec3(0.5f, 0.5f, 0.5f);
         float anisotropy = 0.0f;
         float sheenRoughness = 0.0f;
-        glm::vec3 sheenColor = glm::vec3(0.0f, 0.0f, 0.0f);
+        float sheenTint = 0.5f;
         float clearcoat = 0.0f;
         float clearcoatRoughness = 0.0f;
-        float refraction = 1.0f;
+        float refraction = 1.5f;
         float transmission = 0.0f;
-        glm::vec3 emissiveColor = glm::vec3(0.0f, 0.0f, 0.0f);
     };
 
 private:
@@ -110,43 +108,41 @@ private:
 
     struct alignas(16) EnvironmentAlign
     {
-        GLuint64 HDRIHandle;
-        GLuint64 HDRICacheHandle;
-        alignas(16) glm::vec2 HDRIDimensions;
+        GLuint64 hdriHandle;
+        GLuint64 hdriCacheHandle;
+        alignas(16) glm::vec2 hdriDimensions;
     };
 
     struct alignas(16) MaterialAlign
     {
         // Texture handles
-        GLuint64 AlbedoTextureHandle;
-        GLuint64 NormalTextureHandle;
-        GLuint64 SpecularTextureHandle;
-        GLuint64 SpecularColorTextureHandle;
-        GLuint64 MetallicRoughnessTextureHandle;
-        GLuint64 SheenRoughnessTextureHandle;
-        GLuint64 SheenColorTextureHandle;
-        GLuint64 ClearcoatTextureHandle;
-        GLuint64 ClearcoatRoughnessTextureHandle;
-        GLuint64 ClearcoatNormalTextureHandle;
-        GLuint64 TransmissionTextureHandle;
-        GLuint64 EmissiveTextureHandle;
+        GLuint64 emissionTextureHandle;
+        GLuint64 albedoTextureHandle;
+        GLuint64 normalTextureHandle;
+        GLuint64 specularTextureHandle;
+        GLuint64 specularColorTextureHandle;
+        GLuint64 metallicRoughnessTextureHandle;
+        GLuint64 sheenRoughnessTextureHandle;
+        GLuint64 sheenColorTextureHandle;
+        GLuint64 clearcoatTextureHandle;
+        GLuint64 clearcoatRoughnessTextureHandle;
+        GLuint64 transmissionTextureHandle;
 
         // Attributes
+        alignas(16) glm::vec3 emission;
         alignas(16) glm::vec3 albedo;
         float specular;
-        alignas(16) glm::vec3 specularColor;
+        float specularTint;
         float metallic;
         float roughness;
         float subsurface;
-        alignas(16) glm::vec3 subsurfaceColor;
         float anisotropy;
         float sheenRoughness;
-        alignas(16) glm::vec3 sheenColor;
+        float sheenTint;
         float clearcoat;
         float clearcoatRoughness;
         float refraction;
         float transmission;
-        alignas(16) glm::vec3 emissiveColor;
     };
 
 private:
@@ -164,16 +160,16 @@ private:
     std::vector<MaterialSave> m_materialsSaved;
 
     // Textures
-    std::shared_ptr<Texture2DObject> m_HDRICache;
+    std::shared_ptr<Texture2DObject> m_hdriCache;
 
     // Bindless texture handles
-    GLuint64 m_HDRIHandle;
-    GLuint64 m_HDRICacheHandle;
+    GLuint64 m_hdriHandle;
+    GLuint64 m_hdriCacheHandle;
 
     // SSBOs
     std::shared_ptr<ShaderStorageBufferObject> m_ssboSettings;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboEnvironment;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboMaterials;
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHNodes;
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboBVHPrimitives;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboBvhNodes;
+    std::shared_ptr<ShaderStorageBufferObject> m_ssboBvhPrimitives;
 };

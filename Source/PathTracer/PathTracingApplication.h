@@ -53,7 +53,7 @@ public:
     const float GetDebugValueA() const { return m_debugValueA; }
     const float GetDebugValueB() const { return m_debugValueB; }
 
-    const std::shared_ptr<Texture2DObject> GetHDRI() { return m_HDRI; }
+    const std::shared_ptr<Texture2DObject> GetHdri() { return m_Hdri; }
 
     const std::vector<Model> GetModels() const { return m_models; }
 
@@ -95,7 +95,7 @@ private:
     float m_debugValueB;
 
     // HDRI texture
-    std::shared_ptr<Texture2DObject> m_HDRI;
+    std::shared_ptr<Texture2DObject> m_Hdri;
 
     // All loaded models
     std::vector<Model> m_models;

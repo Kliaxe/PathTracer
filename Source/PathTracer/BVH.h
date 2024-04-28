@@ -5,7 +5,7 @@
 class BVH
 {
 public:
-	struct BVHNode
+	struct BvhNode
 	{
 		// Left and right subtree index
 		int left;
@@ -20,7 +20,7 @@ public:
 		glm::vec3 BB;
 	};
 
-	struct BVHPrimitive 
+	struct BvhPrimitive 
 	{
 		glm::vec3 posA;
 		glm::vec3 posB;
@@ -37,7 +37,7 @@ public:
 		unsigned int meshIndex;
 	};
 
-	struct alignas(16) BVHNodeAlign
+	struct alignas(16) BvhNodeAlign
 	{
 		int left;
 		int right;
@@ -47,7 +47,7 @@ public:
 		alignas(16) glm::vec3 BB;
 	};
 
-	struct alignas(16) BVHPrimitiveAlign
+	struct alignas(16) BvhPrimitiveAlign
 	{
 		alignas(16) glm::vec4 posAuvX;
 		alignas(16) glm::vec4 norAuvY;
@@ -62,6 +62,6 @@ public:
 	};
 
 	// Construct BVH
-	static int BuildBVH(std::vector<BVHPrimitive>& triangles, std::vector<BVHNode>& nodes, int l, int r, int n);
-	static int BuildBVHWithSAH(std::vector<BVHPrimitive>& triangles, std::vector<BVHNode>& nodes, int l, int r, int n);
+	static int BuildBvh(std::vector<BvhPrimitive>& triangles, std::vector<BvhNode>& nodes, int l, int r, int n);
+	static int BuildBvhWithSah(std::vector<BvhPrimitive>& triangles, std::vector<BvhNode>& nodes, int l, int r, int n);
 };
