@@ -1,3 +1,5 @@
+#version 460 core
+
 //Inputs
 layout (location = 0) in vec3 VertexPosition;
 

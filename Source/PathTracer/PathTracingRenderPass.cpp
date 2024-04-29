@@ -21,7 +21,7 @@
 //#define DEBUG_EBO
 
 PathTracingRenderPass::PathTracingRenderPass(int width, int height, PathTracingApplication* pathTracingApplication, std::shared_ptr<Material> pathTracingMaterial, std::shared_ptr<const FramebufferObject> framebuffer)
-    : RenderPass(framebuffer), m_width(width), m_height(height), m_pathTracingApplication(pathTracingApplication), m_pathTracingMaterial(pathTracingMaterial)
+    : RenderPass(framebuffer), m_width(width), m_height(height), m_pathTracingApplication(pathTracingApplication)
 {
     InitializeTextures();
     InitializeBuffers();
@@ -45,7 +45,7 @@ void PathTracingRenderPass::Render()
     // Path Tracing render
     if (m_pathTracingApplication->GetShouldPathTrace())
     {
-        assert(m_pathTracingMaterial);
+        assert(m_pathTracingApplication->GetPathTracingMaterial());
 
         // Mark all as resident
         for (const MaterialSave& materialSave : m_materialsSaved)
@@ -73,7 +73,7 @@ void PathTracingRenderPass::Render()
         m_ssboBvhPrimitives->Bind();
 
         // Use material
-        m_pathTracingMaterial->Use();
+        m_pathTracingApplication->GetPathTracingMaterial()->Use();
 
         // Uniform image output
         m_pathTracingRadianceTexture->BindImageTexture(0, 0, GL_FALSE, 0, GL_READ_WRITE, TextureObject::InternalFormatRGBA32F);
@@ -185,12 +185,11 @@ void PathTracingRenderPass::Render()
 
     // Copy render
     {
-        assert(m_pathTracingApplication->GetCopyMaterial());
+        assert(m_pathTracingApplication->GetPathTracingCopyMaterial());
 
-        m_pathTracingApplication->GetCopyMaterial()->Use();
+        m_pathTracingApplication->GetPathTracingCopyMaterial()->Use();
 
-        m_outputTexture->Bind();
-        m_pathTracingApplication->GetCopyMaterial()->SetUniformValue("SouceTexture", m_outputTexture);
+        m_pathTracingApplication->GetPathTracingCopyMaterial()->SetUniformValue("SourceTexture", m_outputTexture);
 
         Renderer& renderer = GetRenderer();
         const Mesh* mesh = &renderer.GetFullscreenMesh();

@@ -45,20 +45,6 @@ private:
     std::shared_ptr<Texture2DObject> CalculateHdriCache(std::shared_ptr<Texture2DObject> hdri, int& width, int& height);
 
 private:
-    // Materials
-    std::shared_ptr<Material> m_pathTracingMaterial;
-
-    // Textures
-    std::shared_ptr<Texture2DObject> m_pathTracingRadianceTexture;
-    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryAlbedoTexture;
-    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryNormalTexture;
-    std::shared_ptr<Texture2DObject> m_pathTracingDenoisedRadianceTexture;
-    std::shared_ptr<Texture2DObject> m_outputTexture;
-
-    // Framebuffers
-    std::shared_ptr<FramebufferObject> m_framebuffer;
-
-private:
     // What VBO is made out of, based on allowed semantics
     struct VertexSave
     {
@@ -150,6 +136,16 @@ private:
     int m_height;
     PathTracingApplication* m_pathTracingApplication;
 
+    // Textures
+    std::shared_ptr<Texture2DObject> m_pathTracingRadianceTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryAlbedoTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingPrimaryNormalTexture;
+    std::shared_ptr<Texture2DObject> m_pathTracingDenoisedRadianceTexture;
+    std::shared_ptr<Texture2DObject> m_outputTexture;
+
+    // Framebuffers
+    std::shared_ptr<FramebufferObject> m_framebuffer;
+
     // Denoiser data
     glm::vec3* m_denoiserRadianceInputPtr;
     glm::vec3* m_denoiserPrimaryAlbedoInputPtr;
@@ -159,7 +155,7 @@ private:
     // Saved materials
     std::vector<MaterialSave> m_materialsSaved;
 
-    // Textures
+    // Hdri Cache
     std::shared_ptr<Texture2DObject> m_hdriCache;
 
     // Bindless texture handles

@@ -1,3 +1,5 @@
+#version 460 core
+
 //Inputs
 in vec2 TexCoord;
 
