@@ -361,6 +361,16 @@ void PathTracingApplication::UpdateMaterial(const Camera& camera, int width, int
 std::shared_ptr<Material> PathTracingApplication::CreatePathTracingMaterial()
 {
     std::vector<const char*> computeShaderPaths;
+    computeShaderPaths.push_back("Shaders/Library/version.glsl");
+    computeShaderPaths.push_back("Shaders/Library/common.glsl");
+    computeShaderPaths.push_back("Shaders/Library/resources.glsl");
+    computeShaderPaths.push_back("Shaders/Library/utility.glsl");
+    computeShaderPaths.push_back("Shaders/Library/intersection.glsl");
+    computeShaderPaths.push_back("Shaders/Library/montecarlo.glsl");
+    computeShaderPaths.push_back("Shaders/Library/brdf.glsl");
+    computeShaderPaths.push_back("Shaders/Library/disney.glsl");
+    computeShaderPaths.push_back("Shaders/Library/hdri.glsl");
+    computeShaderPaths.push_back("Shaders/Library/debug.glsl");
     computeShaderPaths.push_back("Shaders/pathtracing.comp");
     Shader computeShader = ShaderLoader(Shader::ComputeShader).Load(computeShaderPaths);
 

@@ -186,6 +186,16 @@ xcopy /s /d "$(ProjectDir)Content" "$(OutDir)Content\"</Command>
   <ItemGroup>
     <None Include="Shaders\blinn-phong.frag" />
     <None Include="Shaders\blinn-phong.vert" />
+    <None Include="Shaders\Library\brdf.glsl" />
+    <None Include="Shaders\Library\common.glsl" />
+    <None Include="Shaders\Library\debug.glsl" />
+    <None Include="Shaders\Library\disney.glsl" />
+    <None Include="Shaders\Library\hdri.glsl" />
+    <None Include="Shaders\Library\montecarlo.glsl" />
+    <None Include="Shaders\Library\resources.glsl" />
+    <None Include="Shaders\Library\intersection.glsl" />
+    <None Include="Shaders\Library\utility.glsl" />
+    <None Include="Shaders\Library\version.glsl" />
     <None Include="Shaders\pathtracing.comp" />
     <None Include="Shaders\Renderer\copy.frag" />
     <None Include="Shaders\Renderer\fullscreen.vert" />

@@ -86,12 +86,6 @@ private:
     };
 
 private:
-    struct alignas(16) SettingsAlign
-    {
-        float debugValueA;
-        float debugValueB;
-    };
-
     struct alignas(16) EnvironmentAlign
     {
         GLuint64 hdriHandle;
@@ -163,7 +157,6 @@ private:
     GLuint64 m_hdriCacheHandle;
 
     // SSBOs
-    std::shared_ptr<ShaderStorageBufferObject> m_ssboSettings;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboEnvironment;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboMaterials;
     std::shared_ptr<ShaderStorageBufferObject> m_ssboBvhNodes;

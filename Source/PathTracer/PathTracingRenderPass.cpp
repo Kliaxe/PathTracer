@@ -66,7 +66,6 @@ void PathTracingRenderPass::Render()
         glMakeTextureHandleResidentARB(m_hdriCacheHandle);
         
         // Bind SSBO buffers
-        m_ssboSettings->Bind();
         m_ssboEnvironment->Bind();
         m_ssboMaterials->Bind();
         m_ssboBvhNodes->Bind();
@@ -421,28 +420,6 @@ void PathTracingRenderPass::InitializeBuffers()
         }
     }
 
-    // Settings allocation
-    {
-        // Create SSBO for settings
-        m_ssboSettings = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboSettings->Bind();
-
-        // Binding index
-        glBindBufferBase(m_ssboSettings->GetTarget(), 0, m_ssboSettings->GetHandle()); // Binding index: 0
-
-        // Parse settings
-        SettingsAlign settingsAlign{ };
-        settingsAlign.debugValueA = m_pathTracingApplication->GetDebugValueA();
-        settingsAlign.debugValueB = m_pathTracingApplication->GetDebugValueB();
-
-        // Convert to span
-        std::span<SettingsAlign> span = std::span(&settingsAlign, 1);
-
-        // Allocate
-        m_ssboSettings->AllocateData(span);
-        m_ssboSettings->Unbind();
-    }
-
     // Environment allocation
     {
         // Create SSBO for environment
@@ -450,7 +427,7 @@ void PathTracingRenderPass::InitializeBuffers()
         m_ssboEnvironment->Bind();
 
         // Binding index
-        glBindBufferBase(m_ssboEnvironment->GetTarget(), 1, m_ssboEnvironment->GetHandle()); // Binding index: 1
+        glBindBufferBase(m_ssboEnvironment->GetTarget(), 0, m_ssboEnvironment->GetHandle()); // Binding index: 1
 
         // Get HDRI
         std::shared_ptr<Texture2DObject> hdri = m_pathTracingApplication->GetHdri();
@@ -497,7 +474,7 @@ void PathTracingRenderPass::InitializeBuffers()
         m_ssboMaterials->Bind();
 
         // Binding index
-        glBindBufferBase(m_ssboMaterials->GetTarget(), 2, m_ssboMaterials->GetHandle()); // Binding index: 2
+        glBindBufferBase(m_ssboMaterials->GetTarget(), 1, m_ssboMaterials->GetHandle()); // Binding index: 2
 
         // Convert to MaterialAlign for GPU consumption
 
@@ -592,7 +569,7 @@ void PathTracingRenderPass::InitializeBuffers()
             m_ssboBvhNodes->Bind();
 
             // Binding index
-            glBindBufferBase(m_ssboBvhNodes->GetTarget(), 3, m_ssboBvhNodes->GetHandle()); // Binding index: 3
+            glBindBufferBase(m_ssboBvhNodes->GetTarget(), 2, m_ssboBvhNodes->GetHandle()); // Binding index: 3
 
             // Initialize BVH nodes
             BVH::BvhNode initNode{ };
@@ -641,7 +618,7 @@ void PathTracingRenderPass::InitializeBuffers()
             m_ssboBvhPrimitives->Bind();
 
             // Binding index
-            glBindBufferBase(m_ssboBvhPrimitives->GetTarget(), 4, m_ssboBvhPrimitives->GetHandle()); // Binding index: 4
+            glBindBufferBase(m_ssboBvhPrimitives->GetTarget(), 3, m_ssboBvhPrimitives->GetHandle()); // Binding index: 4
 
             // Align BVH primitives
             std::vector<BVH::BvhPrimitiveAlign> bvhPrimitivesAligned;
