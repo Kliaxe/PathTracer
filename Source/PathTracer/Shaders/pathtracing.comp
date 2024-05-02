@@ -26,11 +26,14 @@ uniform float DebugValueB;
 
 // --------------------------------------------------------
 
-const float PI			= 3.141592653589f;
-const float TWO_PI		= 6.283185307178f;
-const float ONE_OVER_PI = 0.318309886183f;
+const float PI				= 3.141592653589f;
+const float TWO_PI			= 6.283185307178f;
+const float ONE_OVER_PI		= 0.318309886183f;
+const float ONE_OVER_TWO_PI = 0.159154943091f;
 
 const float FLT_MAX = 3.402823466e+38f;
+
+const float MIN_DIELECTRICS_F0 = 0.04f;
 
 #define BVH_STACKSIZE 16
 
@@ -131,12 +134,12 @@ layout(std430, binding = 2) readonly buffer MaterialBuffer
 
 layout(std430, binding = 3) readonly buffer BvhNodeBuffer
 {
-    BvhNode BvhNodes[];
+    BvhNode bvhNodes[];
 };
 
 layout(std430, binding = 4) readonly buffer BvhPrimitiveBuffer
 {
-    BvhPrimitive BvhPrimitives[];
+    BvhPrimitive bvhPrimitives[];
 };
 
 // --------------------------------------------------------
@@ -158,7 +161,7 @@ struct HitInfo
 	vec3 geometryNormal;
 	vec3 tangent;
 	vec3 bitangent;
-	Material material;
+	uint primitiveIndex;
 };
 
 struct BrdfData
@@ -167,11 +170,11 @@ struct BrdfData
 	float roughness;				// perceptively linear roughness (artist's input)
 	float alpha;					// linear roughness - often 'alpha' in specular BRDF equations
 	float alphaSquared;				// alpha squared - pre-calculated value commonly used in BRDF equations
-	float alphaAnisotropicX;		// Anisotropic specific roughness value based on tangent
-	float alphaAnisotropicY;		// Anisotropic specific roughness value based on bitangent
 	float roughnessClearcoat;
 	float alphaClearcoat;
 	float alphaSquaredClearcoat;
+	float alphaAnisotropicX;		// Anisotropic specific roughness value based on tangent
+	float alphaAnisotropicY;		// Anisotropic specific roughness value based on bitangent
 
 	// Vectors
 	vec3 V; // Direction to viewer (or opposite direction of indident ray)
@@ -195,9 +198,171 @@ struct BrdfData
 	float HdotY;
 
 	// Common used terms for BRDF evaluation
-	float incidentIor;
-	float F0;
+	float eta;
+	float f0;
+	float f90;
 };
+
+// --------------------------------------------------------
+
+vec3 SampleNormalMap(sampler2D normalTexture, HitInfo hitInfo)
+{
+	// By sampling normal maps, uvs should are available to calculate tangent
+	vec3 N = hitInfo.shadingNormal;
+	vec3 T = hitInfo.tangent;
+
+	// Gram-Schmidt process: Re-orthogonalize T with respect to N
+	T = normalize(T - dot(T, N) * N);
+
+	// Recalculate bitangent due to Gram-Schmidt
+	vec3 B = cross(N, T);
+
+	// Create tangent space matrix
+	mat3 TBN = mat3(T, B, N);	
+
+	// Sample normal texture
+	vec3 normalMap = texture(normalTexture, hitInfo.uv).rgb;
+
+	// Transform normal vector to range [-1,1]
+    normalMap = normalize(normalMap * 2.0 - 1.0);
+
+	// Apply tangent space matrix
+    return normalize(TBN * normalMap);
+}
+
+Material EvaluateMaterial(Material material, inout HitInfo hitInfo)
+{
+	Material evalutedMaterial = material;
+
+	if (material.emissionTextureHandle != 0)
+	{
+		vec3 emissionSample = texture(sampler2D(material.emissionTextureHandle), hitInfo.uv).rgb;
+		evalutedMaterial.emission *= emissionSample;
+	}
+	if (material.albedoTextureHandle != 0)
+	{
+		vec3 albedoSample = texture(sampler2D(material.albedoTextureHandle), hitInfo.uv).rgb;
+		evalutedMaterial.albedo *= albedoSample;
+	}
+	if (material.normalTextureHandle != 0)
+	{
+		hitInfo.shadingNormal = SampleNormalMap(sampler2D(material.normalTextureHandle), hitInfo);
+	}
+	if (material.specularTextureHandle != 0)
+	{
+		float specularSample = texture(sampler2D(material.specularTextureHandle), hitInfo.uv).a;
+		evalutedMaterial.specular *= specularSample;
+	}
+	if (material.specularColorTextureHandle != 0)
+	{
+		vec3 specularColorSample = texture(sampler2D(material.specularColorTextureHandle), hitInfo.uv).rgb;
+		evalutedMaterial.specularTint *= length(specularColorSample); // We only care about magnitude, color will be sampled according to Disney
+	}
+	if (material.metallicRoughnessTextureHandle != 0)
+	{
+		vec2 metallicRoughnessSample = texture(sampler2D(material.metallicRoughnessTextureHandle), hitInfo.uv).rg;
+		evalutedMaterial.metallic *= metallicRoughnessSample.x;
+		evalutedMaterial.roughness *= metallicRoughnessSample.y;
+	}
+	if (material.sheenRoughnessTextureHandle != 0)
+	{
+		float sheenRoughnessSample = texture(sampler2D(material.sheenRoughnessTextureHandle), hitInfo.uv).a;
+		evalutedMaterial.sheenRoughness *= sheenRoughnessSample;
+	}
+	if (material.sheenColorTextureHandle != 0)
+	{
+		vec3 sheenColorSample = texture(sampler2D(material.sheenColorTextureHandle), hitInfo.uv).rgb;
+		evalutedMaterial.sheenTint *= length(sheenColorSample); // We only care about magnitude, color will be sampled according to Disney
+	}
+	if (material.clearcoatTextureHandle != 0)
+	{
+		float clearcoatSample = texture(sampler2D(material.clearcoatTextureHandle), hitInfo.uv).r;
+		evalutedMaterial.clearcoat *= clearcoatSample;
+	}
+	if (material.clearcoatRoughnessTextureHandle != 0)
+	{
+		float clearcoatRoughnessSample = texture(sampler2D(material.clearcoatRoughnessTextureHandle), hitInfo.uv).g;
+		evalutedMaterial.clearcoatRoughness *= clearcoatRoughnessSample;
+	}
+	if (material.transmissionTextureHandle != 0)
+	{
+		float transmissionSample = texture(sampler2D(material.transmissionTextureHandle), hitInfo.uv).r;
+		evalutedMaterial.transmission *= transmissionSample;
+	}
+
+	return evalutedMaterial;
+}
+
+Material GetEvaluatedMaterial(inout HitInfo hitInfo)
+{
+	// Material index are associated with primitives
+	uint index = hitInfo.primitiveIndex;
+
+	// Get material and evaluate
+	Material currentMaterial = materials[index];
+	Material evaluatedMaterial = EvaluateMaterial(currentMaterial, hitInfo);
+
+	return evaluatedMaterial;
+}
+
+// Clever offset_ray function from Ray Tracing Gems chapter 6
+// Offsets the ray origin from current position p, along normal n (which must be geometric normal)
+// so that no self-intersection can occur.
+vec3 OffsetRay(vec3 P, vec3 N)
+{
+	const float origin = 1.0f / 32.0f;
+	const float floatScale = 1.0f / 65536.0f;
+	const float intScale = 256.0f;
+
+	ivec3 of_i = ivec3(intScale * N.x, intScale * N.y, intScale * N.z);
+
+	vec3 p_i = vec3(
+		intBitsToFloat(floatBitsToInt(P.x) + ((P.x < 0.0f) ? -of_i.x : of_i.x)),
+		intBitsToFloat(floatBitsToInt(P.y) + ((P.y < 0.0f) ? -of_i.y : of_i.y)),
+		intBitsToFloat(floatBitsToInt(P.z) + ((P.z < 0.0f) ? -of_i.z : of_i.z)));
+
+	return vec3(
+		abs(P.x) < origin ? P.x + floatScale * N.x : p_i.x,
+		abs(P.y) < origin ? P.y + floatScale * N.y : p_i.y,
+		abs(P.z) < origin ? P.z + floatScale * N.z : p_i.z);
+}
+
+void GetTangentBitangent(vec3 N, inout vec3 tangent, inout vec3 bitangent)
+{
+    // Choose a helper vector for the cross product
+	vec3 helper = abs(N.x) > 0.999f ? vec3(0.0f, 0.0f, 1.0f) : vec3(1.0f, 0.0f, 0.0f);
+
+	// Generate vectors
+	tangent = normalize(cross(N, helper));
+	bitangent = normalize(cross(N, tangent));
+}
+
+mat3 GetTangentSpace(vec3 N)
+{
+	// Generate vectors
+	vec3 T;
+	vec3 B;
+	GetTangentBitangent(N, T, B);
+
+	// TBN matrix
+	return mat3(T, B, N);
+}
+
+vec3 ToLocal(vec3 N, vec3 V)
+{
+	// Since the T, B, N are orthonormal, transpose operation is equivalent to the inverse
+	return transpose(GetTangentSpace(N)) * V;
+}
+
+vec3 ToWorld(vec3 N, vec3 V)
+{
+	return GetTangentSpace(N) * V;
+}
+
+float Luminance(vec3 rgb)
+{
+	return dot(rgb, vec3(0.2126f, 0.7152f, 0.0722f));
+}
 
 // --------------------------------------------------------
 
@@ -274,154 +439,39 @@ float HitAABB(Ray r, vec3 AA, vec3 BB)
     return (t1 >= t0) ? ((t0 > 0.0) ? (t0) : (t1)) : (-1);
 }
 
-// --------------------------------------------------------
-
-vec3 SampleNormalMap(sampler2D normalTexture, HitInfo hitInfo)
-{
-	vec3 N = hitInfo.shadingNormal;
-	vec3 T = hitInfo.tangent;
-
-	// Gram-Schmidt process: Re-orthogonalize T with respect to N
-	T = normalize(T - dot(T, N) * N);
-
-	// Recalculate bitangent due to Gram-Schmidt
-	vec3 B = cross(N, T);
-
-	// Create tangent space matrix
-	// mat3 TBN = transpose(mat3(T, B, N)); // ???
-	mat3 TBN = mat3(T, B, N);
-
-	// Sample normal texture
-	vec3 normalMap = texture(normalTexture, hitInfo.uv).rgb;
-
-	// Transform normal vector to range [-1,1]
-    normalMap = normalize(normalMap * 2.0 - 1.0);
-
-	// Apply tangent space matrix
-    normalMap = normalize(TBN * normalMap);
-
-    return normalize(normalMap);
-}
-
-Material EvaluateMaterial(Material material, inout HitInfo hitInfo)
-{
-	Material evalutedMaterial = material;
-
-	if (material.emissionTextureHandle != 0)
-	{
-		vec3 emissionSample = texture(sampler2D(material.emissionTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.emission *= emissionSample;
-	}
-
-	if (material.albedoTextureHandle != 0)
-	{
-		vec3 albedoSample = texture(sampler2D(material.albedoTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.albedo *= albedoSample;
-	}
-
-	if (material.normalTextureHandle != 0)
-	{
-		hitInfo.shadingNormal = SampleNormalMap(sampler2D(material.normalTextureHandle), hitInfo);
-	}
-
-	if (material.specularTextureHandle != 0)
-	{
-		float specularSample = texture(sampler2D(material.specularTextureHandle), hitInfo.uv).a;
-		evalutedMaterial.specular *= specularSample;
-	}
-
-	if (material.specularColorTextureHandle != 0)
-	{
-		vec3 specularColorSample = texture(sampler2D(material.specularColorTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.specularTint *= length(specularColorSample); // We only care about magnitude, color will be sampled according to Disney
-	}
-
-	if (material.metallicRoughnessTextureHandle != 0)
-	{
-		vec2 metallicRoughnessSample = texture(sampler2D(material.metallicRoughnessTextureHandle), hitInfo.uv).rg;
-		evalutedMaterial.metallic *= metallicRoughnessSample.x;
-		evalutedMaterial.roughness *= metallicRoughnessSample.y;
-	}
-
-	if (material.sheenRoughnessTextureHandle != 0)
-	{
-		float sheenRoughnessSample = texture(sampler2D(material.sheenRoughnessTextureHandle), hitInfo.uv).a;
-		evalutedMaterial.sheenRoughness *= sheenRoughnessSample;
-	}
-
-	if (material.sheenColorTextureHandle != 0)
-	{
-		vec3 sheenColorSample = texture(sampler2D(material.sheenColorTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.sheenTint *= length(sheenColorSample); // We only care about magnitude, color will be sampled according to Disney
-	}
-
-	if (material.clearcoatTextureHandle != 0)
-	{
-		float clearcoatSample = texture(sampler2D(material.clearcoatTextureHandle), hitInfo.uv).r;
-		evalutedMaterial.clearcoat *= clearcoatSample;
-	}
-
-	if (material.clearcoatRoughnessTextureHandle != 0)
-	{
-		float clearcoatRoughnessSample = texture(sampler2D(material.clearcoatRoughnessTextureHandle), hitInfo.uv).g;
-		evalutedMaterial.clearcoatRoughness *= clearcoatRoughnessSample;
-	}
-
-	if (material.transmissionTextureHandle != 0)
-	{
-		float transmissionSample = texture(sampler2D(material.transmissionTextureHandle), hitInfo.uv).r;
-		evalutedMaterial.transmission *= transmissionSample;
-	}
-
-	return evalutedMaterial;
-}
-
-// --------------------------------------------------------
-
-BvhPrimitive GetBvhPrimitive(int index)
-{
-	BvhPrimitive primitive = BvhPrimitives[index];
-	return primitive;
-}
-
-Material GetMaterial(unsigned int index)
-{
-	Material material = materials[index];
-	return material;
-}
-
-HitInfo HitArray(Ray ray, int L, int R)
+HitInfo HitArrayClosest(Ray ray, int L, int R)
 {
 	HitInfo closestHit;
 	closestHit.didHit = false;
 	closestHit.dst = FLT_MAX;
 
+	uint closestPrimitiveIndex = 0;
+
 	for (int i = L; i <= R; i++)
 	{
-		BvhPrimitive primitive = GetBvhPrimitive(i);
+		BvhPrimitive primitive = bvhPrimitives[i];
 		HitInfo hitInfo = RayTriangle(ray, primitive);
 
 		if (hitInfo.didHit && hitInfo.dst < closestHit.dst)
 		{
 			closestHit = hitInfo;
-			
-			Material currentMaterial = GetMaterial(primitive.meshIndex);
-			Material evaluatedMaterial = EvaluateMaterial(currentMaterial, hitInfo);
 
-			closestHit.material = evaluatedMaterial;
+			// Store the index of the closest primitive
+			closestPrimitiveIndex = primitive.meshIndex;
 		}
+	}
+
+	// After the loop, get and evaluate the material
+	if (closestHit.didHit)
+	{
+		closestHit.primitiveIndex = closestPrimitiveIndex;
 	}
 
 	return closestHit;
 }
 
-BvhNode GetBvhNode(int index)
-{
-	BvhNode node = BvhNodes[index];
-	return node;
-}
-
-HitInfo HitBvh(Ray ray)
+// Get closest HitInfo by intersecting with Bvh nodes and Bvh primitives
+HitInfo HitBvhClosest(Ray ray)
 {
 	HitInfo closestHit;
 	closestHit.didHit = false;
@@ -435,7 +485,7 @@ HitInfo HitBvh(Ray ray)
 	while(stackPointer > 0)
 	{
 		int top = stack[--stackPointer];
-		BvhNode node = GetBvhNode(top);
+		BvhNode node = bvhNodes[top];
 
 		// If node is leaf, traverse primitives and find intersection
 		if (node.n > 0)
@@ -443,8 +493,8 @@ HitInfo HitBvh(Ray ray)
 			int L = node.index;
 			int R = node.index + node.n - 1;
 
-			// Go through all primitives inside of BVH node range
-			HitInfo hitInfo = HitArray(ray, L, R);
+			// Go through all primitives inside of BVH node range and estimate closest hit
+			HitInfo hitInfo = HitArrayClosest(ray, L, R);
 			
 			// Out of the other nodes, did this one perform better?
 			if (hitInfo.didHit && hitInfo.dst < closestHit.dst)
@@ -462,13 +512,13 @@ HitInfo HitBvh(Ray ray)
 
 				if (node.left > 0.0f)
 				{
-					BvhNode leftNode = GetBvhNode(node.left);
+					BvhNode leftNode = bvhNodes[node.left];
 					dstLeft = HitAABB(ray, leftNode.AA, leftNode.BB);
 				}
 
 				if (node.right > 0.0f)
 				{
-					BvhNode rightNode = GetBvhNode(node.right);
+					BvhNode rightNode = bvhNodes[node.right];
 					dstRight = HitAABB(ray, rightNode.AA, rightNode.BB);
 				}
 
@@ -507,9 +557,36 @@ HitInfo HitBvh(Ray ray)
 	return closestHit;
 }
 
-vec3 HitBvhDebug(Ray ray)
+HitInfo HitArrayAny(Ray ray, int L, int R)
 {
-	uint hitCounter = 0;
+	HitInfo anyHit;
+	anyHit.didHit = false;
+	anyHit.dst = FLT_MAX;
+
+	for (int i = L; i <= R; i++)
+	{
+		BvhPrimitive primitive = bvhPrimitives[i];
+		HitInfo hitInfo = RayTriangle(ray, primitive);
+
+		if (hitInfo.didHit)
+		{
+			anyHit = hitInfo;
+
+			// Exit the loop as soon as a hit is found
+            break;
+		}
+	}
+
+	return anyHit;
+}
+
+// Get any HitInfo by intersecting with Bvh nodes and Bvh primitives
+// No materials are retrieved and evaluated
+HitInfo HitBvhAny(Ray ray)
+{
+	HitInfo anyHit;
+	anyHit.didHit = false;
+	anyHit.dst = FLT_MAX;
 
 	// Stack
 	int stack[BVH_STACKSIZE];
@@ -519,12 +596,23 @@ vec3 HitBvhDebug(Ray ray)
 	while(stackPointer > 0)
 	{
 		int top = stack[--stackPointer];
-		BvhNode node = GetBvhNode(top);
+		BvhNode node = bvhNodes[top];
 
 		// If node is leaf, traverse primitives and find intersection
 		if (node.n > 0)
 		{
-			hitCounter++;
+			int L = node.index;
+			int R = node.index + node.n - 1;
+
+			// Go through all primitives inside of BVH node range and get first found primitive
+			HitInfo hitInfo = HitArrayAny(ray, L, R);
+			
+			// Out of the other nodes, did this one perform better?
+			if (hitInfo.didHit)
+			{
+				anyHit = hitInfo;
+				break;
+			}
 		}
 		else
 		{
@@ -536,13 +624,13 @@ vec3 HitBvhDebug(Ray ray)
 
 				if (node.left > 0.0f)
 				{
-					BvhNode leftNode = GetBvhNode(node.left);
+					BvhNode leftNode = bvhNodes[node.left];
 					dstLeft = HitAABB(ray, leftNode.AA, leftNode.BB);
 				}
 
 				if (node.right > 0.0f)
 				{
-					BvhNode rightNode = GetBvhNode(node.right);
+					BvhNode rightNode = bvhNodes[node.right];
 					dstRight = HitAABB(ray, rightNode.AA, rightNode.BB);
 				}
 
@@ -573,35 +661,12 @@ vec3 HitBvhDebug(Ray ray)
 			}
 			else
 			{
-				hitCounter = 0xFFFFFFFF;
 				break;
 			}
 		}
 	}
 
-	if (hitCounter == 0xFFFFFFFF)
-	{
-		return vec3(1.0f, 0.0f, 1.0f); // error: stack overflow (purple)
-	}
-
-	// Heat map
-	const vec3 mapTex[] = {
-		vec3(0.0f, 0.0f, 0.0f),
-		vec3(0.0f, 0.0f, 1.0f),
-		vec3(0.0f, 1.0f, 1.0f),
-		vec3(0.0f, 1.0f, 0.0f),
-		vec3(1.0f, 1.0f, 0.0f),
-		vec3(1.0f, 0.0f, 0.0f),
-	};
-
-	const float mapTexLen = 5.0f;
-	const float maxHeat = 100.0f;
-	float l = clamp(float(hitCounter) / maxHeat, 0.0f, 1.0f) * mapTexLen;
-	vec3 a = mapTex[uint(floor(l))];
-	vec3 b = mapTex[uint(ceil(l))];
-	vec3 heatmap = mix(a, b, l - floor(l));
-
-	return heatmap;
+	return anyHit;
 }
 
 // --------------------------------------------------------
@@ -639,80 +704,9 @@ vec3 RandomValueVec3(inout uint state)
 	return vec3(R1, R2, R3);
 }
 
-// Clever offset_ray function from Ray Tracing Gems chapter 6
-// Offsets the ray origin from current position p, along normal n (which must be geometric normal)
-// so that no self-intersection can occur.
-vec3 OffsetRay(vec3 P, vec3 N)
-{
-	const float origin = 1.0f / 32.0f;
-	const float floatScale = 1.0f / 65536.0f;
-	const float intScale = 256.0f;
-
-	ivec3 of_i = ivec3(intScale * N.x, intScale * N.y, intScale * N.z);
-
-	vec3 p_i = vec3(
-		intBitsToFloat(floatBitsToInt(P.x) + ((P.x < 0.0f) ? -of_i.x : of_i.x)),
-		intBitsToFloat(floatBitsToInt(P.y) + ((P.y < 0.0f) ? -of_i.y : of_i.y)),
-		intBitsToFloat(floatBitsToInt(P.z) + ((P.z < 0.0f) ? -of_i.z : of_i.z)));
-
-	return vec3(
-		abs(P.x) < origin ? P.x + floatScale * N.x : p_i.x,
-		abs(P.y) < origin ? P.y + floatScale * N.y : p_i.y,
-		abs(P.z) < origin ? P.z + floatScale * N.z : p_i.z);
-}
-
-void GetTangentBitangent(vec3 N, inout vec3 tangent, inout vec3 bitangent)
-{
-    // Choose a helper vector for the cross product
-	vec3 helper = abs(N.x) > 0.999f ? vec3(0.0f, 0.0f, 1.0f) : vec3(1.0f, 0.0f, 0.0f);
-
-	// Generate vectors
-	tangent = normalize(cross(N, helper));
-	bitangent = normalize(cross(N, tangent));
-}
-
-mat3 GetTangentSpace(vec3 N)
-{
-	// Generate vectors
-	vec3 T;
-	vec3 B;
-	GetTangentBitangent(N, T, B);
-
-	// TBN matrix
-	return mat3(T, B, N);
-}
-
-vec3 ToLocal(vec3 N, vec3 V)
-{
-	// Since the T, B, N are orthonormal, transpose operation is equivalent to the inverse
-	return transpose(GetTangentSpace(N)) * V;
-}
-
-vec3 ToWorld(vec3 N, vec3 V)
-{
-	return GetTangentSpace(N) * V;
-}
-
-float sqr(float x)
-{
-	return x * x; 
-}
-
-float Luminance(vec3 rgb)
-{
-	return dot(rgb, vec3(0.2126f, 0.7152f, 0.0722f));
-}
-
-float misMixWeight(float a, float b)
-{
-	float t = a * a;
-	return t / (b * b + t);
-}
-
-// --------------------------------------------------------
-
 // Point on hemisphere with uniform distribution
 //	u, v : in range [0, 1]
+// PDF = 1 / (4 * PI)
 vec3 HemispherepointUniform(float u, float v)
 {
 	float phi = v * TWO_PI;
@@ -723,6 +717,7 @@ vec3 HemispherepointUniform(float u, float v)
 
 // Point on hemisphere with cosine-weighted distribution
 //	u, v : in range [0, 1]
+// PDF = NdotL / PI
 vec3 HemispherepointCos(float u, float v)
 {
 	float phi = v * TWO_PI;
@@ -731,32 +726,18 @@ vec3 HemispherepointCos(float u, float v)
 	return vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
 }
 
-vec3 SampleGTR1(vec2 Xi, float a)
+// Sample half-angle directions from Generalized Trowbridge-Reitz (GGX) 2 lobe normal distribution
+// PDF = D * NoH / (4 * VoH)
+vec3 ImportanceSampleGGX(float alpha, vec2 Xi)
 {
-	float a2 = a * a;
+	float a2 = alpha * alpha;
 
-	float phiH = TWO_PI * Xi.x;
-	float sinPhiH = sin(phiH);
-	float cosPhiH = cos(phiH);
-	
-	float cosThetaH = sqrt((1.0f - pow(a2, 1.0f - Xi.y)) / (1.0f - a2));
-	float sinThetaH = sqrt(max(0.0f, 1.0f - cosThetaH * cosThetaH));
-
-	// Sample the normal vector of the 'microfacet' as the half-angle vector h for specular reflection
-    return vec3(sinThetaH * cosPhiH, sinThetaH * sinPhiH, cosThetaH);
-}
-
-// GTR2 importance sampling
-vec3 SampleGTR2(vec2 Xi, float a)
-{
-	float a2 = a * a;
-
-	float phiH = TWO_PI * Xi.x;
-	float sinPhiH = sin(phiH);
-	float cosPhiH = cos(phiH);
-	
 	float cosThetaH = sqrt((1.0f - Xi.y) / (1.0f + (a2 - 1.0f) * Xi.y));
 	float sinThetaH = sqrt(max(0.0f, 1.0f - cosThetaH * cosThetaH));
+
+	float phiH = TWO_PI * Xi.x;
+	float sinPhiH = sin(phiH);
+	float cosPhiH = cos(phiH);
 	
 	// Sample the normal vector of the 'microfacet' as the half-angle vector h for specular reflection
 	return vec3(sinThetaH * cosPhiH, sinThetaH * sinPhiH, cosThetaH);
@@ -765,9 +746,9 @@ vec3 SampleGTR2(vec2 Xi, float a)
 // Samples a microfacet normal for the GGX distribution using VNDF method.
 // Source: "Sampling the GGX Distribution of Visible Normals" by Heitz
 // See also https://hal.inria.fr/hal-00996995v1/document and http://jcgt.org/published/0007/04/01/
-// Random variables 'u' must be in <0;1) interval
-// PDF is 'G1(NdotV) * D'
-vec3 SampleGGXVNDF(vec3 Ve, float ax, float ay, vec2 Xi)
+// PDF = G_SmithV * VoH * D / NoV / (4 * VoH)
+// PDF = G_SmithV * D / (4 * NoV)
+vec3 ImportanceSampleVisibleGGX(vec3 Ve, float ax, float ay, vec2 Xi)
 {
 	// Section 3.2: transforming the view direction to the hemisphere configuration
 	vec3 Vh = normalize(vec3(ax * Ve.x, ay * Ve.y, Ve.z));
@@ -792,11 +773,516 @@ vec3 SampleGGXVNDF(vec3 Ve, float ax, float ay, vec2 Xi)
 	return normalize(vec3(ax * Nh.x, ay * Nh.y, max(0.0f, Nh.z)));
 }
 
+// Multiple importance sampling power heuristic of two functions with a power of two. 
+// [Veach 1997, "Robust Monte Carlo Methods for Light Transport Simulation"]
+float MisMixWeight(float a, float b)
+{
+	float t = a * a;
+	return t / (b * b + t);
+}
+
+// When sampling from discrete CDFs, it can be convenient to re-use the random number by rescaling it
+// This function assumes that randomValue is in the interval: [lowerBound, UpperBound) and returns a value in [0,1)
+float RescaleRandomNumber(float randomValue, float lowerBound, float upperBound)
+{
+	const float oneMinusEpsilon = 0.99999994f; // 32-bit float just before 1.0
+	return min((randomValue - lowerBound) / (upperBound - lowerBound), oneMinusEpsilon);
+}
+
+// --------------------------------------------------------
+
+// Physically based shading model
+// parameterized with the below options
+// [ Karis 2013, "Real Shading in Unreal Engine 4" slide 11 ]
+
+// E = Random sample for BRDF.
+// N = Normal of the macro surface.
+// H = Normal of the micro surface.
+// V = View vector going from surface's position towards the view's origin.
+// L = Light ray direction
+
+// D = Microfacet NDF
+// G = Shadowing and masking
+// F = Fresnel
+
+// Vis = G / (4*NoL*NoV)
+// f = Microfacet specular BRDF = D*G*F / (4*NoL*NoV) = D*Vis*F
+
+// Walter et al. 2007, "Microfacet Models for Refraction through Rough Surfaces"
+float D_GGX(float alpha, float NdotH)
+{
+	float oneMinusNoHSquared = 1.0f - NdotH * NdotH;
+	float a = NdotH * alpha;
+	float k = alpha / (oneMinusNoHSquared + a * a);
+	return k * k * ONE_OVER_PI;
+}
+
+// Burley 2012, "Physically-Based Shading at Disney"
+float D_GGX_Anisotropic(float at, float ab, float HdotX, float HdotY, float NdotH)
+{
+	float a2 = at * ab;
+	vec3 d = vec3(ab * HdotX, at * HdotY, a2 * NdotH);
+	float d2 = dot(d, d);
+	float b2 = a2 / d2;
+	return a2 * b2 * b2 * ONE_OVER_PI;
+}
+
+// Estevez and Kulla 2017, "Production Friendly Microfacet Sheen BRDF"
+float D_Charlie(float roughness, float NdotH)
+{
+	float invR = 1.0f / roughness;
+	float cos2h = NdotH * NdotH;
+	float sin2h = 1.0f - cos2h;
+	return (2.0f + invR) * pow(sin2h, invR * 0.5f) / ONE_OVER_TWO_PI;
+}
+
+// Smith's visibility function for isotropic surfaces
+float V_Smith_G1_GGX(float alpha, float NdotV)
+{
+    float a = alpha * alpha;
+    float b = NdotV * NdotV;
+    return (2.0f * NdotV) / (NdotV + sqrt(a + b - a * b));
+}
+
+// Smith's visibility function for anisotropic surfaces
+float V_Smith_G1_GGX_Anisotropic(float ax, float ay, float VdotX, float VdotY, float NdotV)
+{
+    float a = VdotX * ax;
+    float b = VdotY * ay;
+    float c = NdotV;
+    return (2.0f * NdotV) / (NdotV + sqrt(a * a + b * b + c * c));
+}
+
+// Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"
+// Note that returned value is G2 / (4 * NdotL * NdotV)
+float V_Smith_G2_Correlated_GGX(float alpha, float NdotV, float NdotL)
+{
+	float a2 = alpha * alpha;
+	float lambdaV = NdotL * sqrt((NdotV - a2 * NdotV) * NdotV + a2);
+	float lambdaL = NdotV * sqrt((NdotL - a2 * NdotL) * NdotL + a2);
+	return 0.5f / (lambdaV + lambdaL);
+}
+
+// Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"
+// Note that returned value is G2 / (4 * NdotL * NdotV)
+float V_Smith_G2_Correlated_GGX_Anisotropic(float ax, float ay, float VdotX, float VdotY, float LdotX, float LdotY, float NdotV, float NdotL)
+{
+	float lambdaV = NdotL * length(vec3(ax * VdotX, ay * VdotY, NdotV));
+	float lambdaL = NdotV * length(vec3(ax * LdotX, ay * LdotY, NdotL));
+	return 0.5f / (lambdaV + lambdaL);
+}
+
+// Kelemen 2001, "A Microfacet Based Coupled Specular-Matte BRDF Model with Importance Sampling"
+float V_Kelemen(float LdotH)
+{
+	// Constant to prevent NaN
+	return 0.25f / (LdotH * LdotH + 1e-5f);
+}
+
+// Neubelt and Pettineo 2013, "Crafting a Next-gen Material Pipeline for The Order: 1886"
+float V_Neubelt(float NdotV, float NdotL)
+{
+	return 1.0f / (4.0f * (NdotL + NdotV - NdotL * NdotV));
+}
+
+// Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"
+float F_SchlickWeight(float u)
+{
+    float m = clamp(1.0f - u, 0.0f, 1.0f);
+	float m2 = m * m;
+	return m * m2 * m2;
+}
+
+float F_Schlick(float f0, float f90, float u)
+{
+	float w = F_SchlickWeight(u);
+    return f0 + (f90 - f0) * w;
+}
+
+// Calculates the full Fresnel term for a dielectric material
+float F_Dielectric(float cosThetaI, float incidentIor)
+{
+    float sinThetaTSq = incidentIor * incidentIor * (1.0f - cosThetaI * cosThetaI);
+
+    // Total internal reflection
+    if (sinThetaTSq > 1.0f)
+        return 1.0f;
+
+    float cosThetaT = sqrt(max(1.0f - sinThetaTSq, 0.0f));
+
+    float rs = (incidentIor * cosThetaT - cosThetaI) / (incidentIor * cosThetaT + cosThetaI);
+    float rp = (incidentIor * cosThetaI - cosThetaT) / (incidentIor * cosThetaI + cosThetaT);
+
+    return 0.5f * (rs * rs + rp * rp);
+}
+
+float Fd_Lambert()
+{
+    return ONE_OVER_PI;
+}
+
+// Burley 2012, "Physically-Based Shading at Disney"
+float Fd_Burley(float roughness, float NdotV, float NdotL, float LdotH)
+{
+    float f90 = 0.5f + 2.0f * roughness * LdotH * LdotH;
+    float lightScatter = F_Schlick(1.0f, f90, NdotL);
+    float viewScatter  = F_Schlick(1.0f, f90, NdotV);
+    return lightScatter * viewScatter * ONE_OVER_PI;
+}
+
+// Burley 2012, "Physically-Based Shading at Disney"
+// Hanrahan-Krueger BRDF approximation of isotropic bssrdf
+float Fd_HanrahanKrueger(float roughness, float NdotV, float NdotL, float LdotH)
+{
+    float Fss90 = roughness * LdotH * LdotH;
+    float FLss = F_SchlickWeight(NdotL);
+    float FVss = F_SchlickWeight(NdotV);
+    float Fss = mix(1.0f, Fss90, FLss) * mix(1.0f, Fss90, FVss);
+	return 1.25f * (Fss * (1.0f / (NdotL + NdotV) - 0.5f) + 0.5f) * ONE_OVER_PI;
+}
+
+// --------------------------------------------------------
+
+vec3 CalculateTint(Material material)
+{
+    float luminance = Luminance(material.albedo);
+    return luminance > 0.0f ? material.albedo / luminance : vec3(1.0f);
+}
+
+void TintColors(Material material, BrdfData brdfData, out vec3 Csheen, out vec3 Cspec0)
+{
+	vec3 Ctint = CalculateTint(material);
+
+    Cspec0 = brdfData.f0 * mix(vec3(1.0f), Ctint, material.specularTint); // 0° Specular Color
+	Csheen = mix(vec3(1.0f), Ctint, material.sheenTint); // Sheen Color
+}
+
+vec3 EvaluateDisneyDiffuse(Material material, BrdfData brdfData, out float pdf)
+{
+	pdf = 0.0f;
+	if (brdfData.NdotL <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	// Burley 2012, "Physically-Based Shading at Disney"
+	float Fd = Fd_Burley(brdfData.roughness, brdfData.NdotV, brdfData.NdotL, brdfData.LdotH);
+
+	// Hanrahan-Krueger BRDF approximation of isotropic bssrdf
+    float Fdss = Fd_HanrahanKrueger(brdfData.roughness, brdfData.NdotV, brdfData.NdotL, brdfData.LdotH);
+
+	pdf = brdfData.NdotL * ONE_OVER_PI;
+	return mix(Fd, Fdss, material.subsurface) * material.albedo;
+}
+
+vec3 EvaluateMicrofacetReflection(Material material, BrdfData brdfData, vec3 F, out float pdf)
+{
+	pdf = 0.0f;
+	if (brdfData.NdotL <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	float D = D_GGX_Anisotropic(brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, brdfData.HdotX, brdfData.HdotY, brdfData.NdotH);
+	float V1 = V_Smith_G1_GGX_Anisotropic(brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, brdfData.VdotX, brdfData.VdotY, abs(brdfData.NdotV));
+	float V2 = V_Smith_G2_Correlated_GGX_Anisotropic(brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, brdfData.VdotX, brdfData.VdotY, brdfData.LdotX, brdfData.LdotY, abs(brdfData.NdotV), abs(brdfData.NdotL));
+
+	pdf = D * V1 / (4.0f * brdfData.NdotV);
+	return F * D * V2;
+}
+
+vec3 EvaluateMicrofacetRefraction(Material material, BrdfData brdfData, vec3 F, out float pdf)
+{
+	pdf = 0.0f;
+	if (brdfData.NdotL >= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	float D = D_GGX_Anisotropic(brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, brdfData.HdotX, brdfData.HdotY, brdfData.NdotH);
+	float V1 = V_Smith_G1_GGX_Anisotropic(brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, brdfData.VdotX, brdfData.VdotY, abs(brdfData.NdotV));
+	float V2 = V_Smith_G2_Correlated_GGX_Anisotropic(brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, brdfData.VdotX, brdfData.VdotY, brdfData.LdotX, brdfData.LdotY, abs(brdfData.NdotV), abs(brdfData.NdotL));
+
+	float denom = brdfData.LdotH + brdfData.VdotH * brdfData.eta;
+	denom *= denom;
+	float eta2 = brdfData.eta * brdfData.eta;
+	float jacobian = abs(brdfData.LdotH) / denom;
+
+	pdf = D * V1 * max(0.0f, brdfData.VdotH) * jacobian / brdfData.NdotV;
+	return pow(material.albedo, vec3(0.5f)) * (1.0f - F) * D * V2 * abs(brdfData.VdotH) * jacobian * eta2 * 4.0f;
+}
+
+vec3 EvaluateSheen(Material material, BrdfData brdfData, vec3 Csheen, out float pdf)
+{
+	pdf = 0.0f;
+	if (brdfData.NdotL <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	float D = D_Charlie(material.sheenRoughness, clamp(brdfData.NdotH, 0.0f, 1.0f));
+    float V = V_Neubelt(brdfData.NdotV, brdfData.NdotL);
+
+	pdf = brdfData.NdotL * ONE_OVER_PI;
+	return D * V * Csheen;
+}
+
+vec3 EvaluateClearcoat(Material material, BrdfData brdfData, out float pdf)
+{
+	pdf = 0.0f;
+	if (brdfData.NdotL <= 0.0f)
+	{
+		return vec3(0.0f);
+	}
+
+	float D = D_GGX(brdfData.alphaClearcoat, brdfData.NdotH);
+	float V = V_Kelemen(brdfData.LdotH);
+	float F = F_Schlick(MIN_DIELECTRICS_F0, 1.0f, brdfData.LdotH); // Fix IOR to 1.5
+
+	pdf = D * brdfData.NdotH / (4.0f * brdfData.LdotH);
+	return vec3(D) * V * F;
+}
+
+vec3 SampleDisneyBrdf(Material material, BrdfData brdfData, inout uint rngState)
+{
+	// Tint colors
+	vec3 Csheen, Cspec0;
+	TintColors(material, brdfData, Csheen, Cspec0);
+
+	// Energy loss
+	float clearcoatEnergyLoss = 1.0f - (F_Schlick(MIN_DIELECTRICS_F0, 1.0f, brdfData.LdotH) * material.clearcoat);
+
+	// Model weights
+	float dielectricWeight = (1.0f - material.metallic) * (1.0f - material.transmission) * clearcoatEnergyLoss;
+	float metalWeight = material.metallic * clearcoatEnergyLoss;
+	float glassWeight = (1.0f - material.metallic) * material.transmission;
+	float sheenWeight = material.sheenRoughness;
+	float clearcoatWeight = material.clearcoat;
+
+	// Lobe probabilities
+	float schlickWeight = F_SchlickWeight(brdfData.NdotV);
+	float diffuseProbability = dielectricWeight * Luminance(material.albedo);
+	float dielectricProbability = dielectricWeight * Luminance(mix(Cspec0, vec3(1.0f), schlickWeight));
+	float metalProbability = metalWeight * Luminance(mix(material.albedo, vec3(1.0f), schlickWeight));
+	float glassProbability = glassWeight;
+	float sheenProbability = sheenWeight;
+	float clearcoatProbability = clearcoatWeight;
+
+	// Normalize probabilities
+	float invTotalWeight = 1.0f / (diffuseProbability + dielectricProbability + metalProbability + glassProbability + sheenProbability + clearcoatProbability);
+	diffuseProbability *= invTotalWeight;
+	dielectricProbability *= invTotalWeight;
+	metalProbability *= invTotalWeight;
+	glassProbability *= invTotalWeight;
+	sheenProbability *= invTotalWeight;
+	clearcoatProbability *= invTotalWeight;
+
+	// CDF of the sampling probabilities
+	float cdf[6];
+    cdf[0] = diffuseProbability;
+    cdf[1] = cdf[0] + dielectricProbability;
+    cdf[2] = cdf[1] + metalProbability;
+    cdf[3] = cdf[2] + glassProbability;
+    cdf[4] = cdf[3] + sheenProbability;
+    cdf[5] = cdf[4] + clearcoatProbability;
+
+	// Sample Xi
+	vec3 Xi = RandomValueVec3(rngState);
+
+	// Sample a lobe based on its importance
+	float rd = Xi.z;
+
+	if (rd < cdf[0]) // Diffuse
+	{
+		// Sample direction
+		vec3 H = HemispherepointCos(Xi.x, Xi.y);
+
+		// To world
+		H = ToWorld(brdfData.N, H);
+
+		return H;
+	}
+	else if (rd < cdf[2]) // Dielectric + Metallic reflection
+	{
+		// Sample direction
+		vec3 tangentV = ToLocal(brdfData.N, brdfData.V);
+		vec3 H = ImportanceSampleVisibleGGX(tangentV, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, Xi.xy);
+
+		// Avoid scattered ray going into ground
+		if (H.z < 0.0f)
+			H = -H;
+
+		// To world
+		H = ToWorld(brdfData.N, H);
+
+		return normalize(reflect(-brdfData.V, H));
+	}
+	else if (rd < cdf[3]) // Glass
+	{
+		// Sample direction
+		vec3 tangentV = ToLocal(brdfData.N, brdfData.V);
+		vec3 H = ImportanceSampleVisibleGGX(tangentV, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, Xi.xy);
+
+		// Avoid scattered ray going into ground
+		if (H.z < 0.0f)
+			H = -H;
+
+		// To world
+		H = ToWorld(brdfData.N, H);
+
+		float F = F_Dielectric(abs(dot(brdfData.V, H)), brdfData.eta);
+
+		// Rescale random number for reuse
+		rd = RescaleRandomNumber(rd, cdf[2], cdf[3]);
+
+		// Reflection
+		if (rd < F)
+		{
+			return normalize(reflect(-brdfData.V, H));
+		}
+		else // Transmission
+		{
+			return normalize(refract(-brdfData.V, H, brdfData.eta));
+		}
+	}
+	else if (rd < cdf[4]) // Sheen
+	{
+		// Sample direction
+		vec3 H = HemispherepointCos(Xi.x, Xi.y);
+
+		// To world
+		H = ToWorld(brdfData.N, H);
+
+		return H;
+	}
+	else // Clearcoat
+	{
+		// Sample direction
+		vec3 H = ImportanceSampleGGX(brdfData.alphaClearcoat, Xi.xy);
+
+		// Avoid scattered ray going into ground
+		if (H.z < 0.0f)
+			H = -H;
+
+		// To world
+		H = ToWorld(brdfData.N, H);
+
+		return normalize(reflect(-brdfData.V, H));
+	}
+}
+
+// Based on: https://github.com/wdas/brdf/blob/main/src/brdfs/disney.brdf
+vec3 EvaluateDisneyBrdf(Material material, BrdfData brdfData, out float pdf)
+{
+	vec3 f = vec3(0.0f);
+	pdf = 0.0f;
+
+	// Tint colors
+	vec3 Csheen, Cspec0;
+	TintColors(material, brdfData, Csheen, Cspec0);
+
+	// Energy loss
+	float clearcoatEnergyLoss = 1.0f - (F_Schlick(MIN_DIELECTRICS_F0, 1.0f, brdfData.LdotH) * material.clearcoat);
+
+	// Model weights
+	float dielectricWeight = (1.0f - material.metallic) * (1.0f - material.transmission) * clearcoatEnergyLoss;
+	float metalWeight = material.metallic * clearcoatEnergyLoss;
+	float glassWeight = (1.0f - material.metallic) * material.transmission;
+	float sheenWeight = material.sheenRoughness;
+	float clearcoatWeight = material.clearcoat;
+
+	// Lobe probabilities
+	float schlickWeight = F_SchlickWeight(brdfData.NdotV);
+	float diffuseProbability = dielectricWeight * Luminance(material.albedo);
+	float dielectricProbability = dielectricWeight * Luminance(mix(Cspec0, vec3(1.0f), schlickWeight));
+	float metalProbability = metalWeight * Luminance(mix(material.albedo, vec3(1.0f), schlickWeight));
+	float glassProbability = glassWeight;
+	float sheenProbability = sheenWeight;
+	float clearcoatProbability = clearcoatWeight;
+
+	// Normalize probabilities
+	float invTotalWeight = 1.0f / (diffuseProbability + dielectricProbability + metalProbability + glassProbability + sheenProbability + clearcoatProbability);
+	diffuseProbability *= invTotalWeight;
+	dielectricProbability *= invTotalWeight;
+	metalProbability *= invTotalWeight;
+	glassProbability *= invTotalWeight;
+	sheenProbability *= invTotalWeight;
+	clearcoatProbability *= invTotalWeight;
+
+	bool reflection = brdfData.NdotL * brdfData.NdotV > 0.0f;
+
+	float tmpPdf = 0.0f;
+	float VdotH = abs(brdfData.VdotH);
+
+	// Diffuse
+	if (diffuseProbability > 0.0f && reflection)
+	{
+		f += EvaluateDisneyDiffuse(material, brdfData, tmpPdf) * dielectricWeight;
+		pdf += tmpPdf * diffuseProbability;
+	}
+
+	// Dielectric Reflection
+	if (dielectricProbability > 0.0f && reflection)
+	{
+		// Normalize for interpolating based on Cspec0
+		float F = (F_Dielectric(VdotH, 1.0f / material.refraction) - brdfData.f0) / (1.0f - brdfData.f0);
+
+		f += EvaluateMicrofacetReflection(material, brdfData, mix(Cspec0, vec3(1.0f), F), tmpPdf) * dielectricWeight;
+		pdf += tmpPdf * dielectricProbability;
+	}
+
+	// Metallic reflection
+	if (metalProbability > 0.0f && reflection)
+	{
+		// Tinted to albedo
+		vec3 F = mix(material.albedo, vec3(1.0f), F_SchlickWeight(VdotH));
+
+		f += EvaluateMicrofacetReflection(material, brdfData, F, tmpPdf) * metalWeight;
+		pdf += tmpPdf * metalProbability;
+	}
+
+	// Glass/Specular BSDF
+	if (glassProbability > 0.0f)
+	{
+		// Dielectric fresnel (achromatic)
+		float F = F_Dielectric(VdotH, brdfData.eta);
+
+		if (reflection)
+		{
+			f += EvaluateMicrofacetReflection(material, brdfData, vec3(F), tmpPdf) * glassWeight;
+			pdf += tmpPdf * glassProbability * F;
+		}
+		else
+		{
+			f += EvaluateMicrofacetRefraction(material, brdfData, vec3(F), tmpPdf) * glassWeight;
+			pdf += tmpPdf * glassProbability * (1.0f - F);
+		}
+	}
+
+	// Sheen
+	if (sheenProbability > 0.0f && reflection)
+	{
+		f += EvaluateSheen(material, brdfData, Csheen, tmpPdf) * sheenWeight;
+		pdf += tmpPdf * sheenProbability;
+	}
+
+	// Clearcoat
+	if (clearcoatProbability > 0.0f && reflection)
+	{
+		f += EvaluateClearcoat(material, brdfData, tmpPdf) * clearcoatWeight;
+		pdf += tmpPdf * clearcoatProbability;
+	}
+
+	// Apply NdotL
+	return f * abs(brdfData.NdotL);
+}
+
 // --------------------------------------------------------
 
 float IorToF0(float transmittedIor, float incidentIor)
 {
-	return sqr((transmittedIor - incidentIor) / (transmittedIor + incidentIor));
+	float r = (transmittedIor - incidentIor) / (transmittedIor + incidentIor);
+	return r * r;
 }
 
 float F0ToIor(float f0)
@@ -815,14 +1301,17 @@ BrdfData PrepareEvaluationBrdfData(Material material, vec3 V, vec3 N, vec3 L)
 	GetTangentBitangent(N, X, Y);
 
 	// Unpack 'perceptively linear' -> 'linear' -> 'squared' roughness
-	data.roughness = clamp(material.roughness, 0.001f, 0.999f);
+	data.roughness = clamp(material.roughness, 0.045f, 1.0f);
 	data.alpha = data.roughness * data.roughness;
 	data.alphaSquared = data.alpha * data.alpha;
-	data.alphaAnisotropicX = max(0.001f, data.alpha * (1.0f + material.anisotropy));
-	data.alphaAnisotropicY = max(0.001f, data.alpha * (1.0f - material.anisotropy));
-	data.roughnessClearcoat = clamp(material.clearcoatRoughness, 0.001f, 0.999f);
+
+	data.roughnessClearcoat = clamp(material.clearcoatRoughness, 0.045f, 1.0f);
 	data.alphaClearcoat = data.roughnessClearcoat * data.roughnessClearcoat;
 	data.alphaSquaredClearcoat = data.alphaClearcoat * data.alphaClearcoat;
+
+	// Kulla 2017, "Revisiting Physically Based Shading at Imageworks"
+	data.alphaAnisotropicX = max(0.0f, data.alpha * (1.0f + material.anisotropy));
+	data.alphaAnisotropicY = max(0.0f, data.alpha * (1.0f - material.anisotropy));
 
 	// Evaluate VNLHXY vectors
 	data.V = V;
@@ -834,10 +1323,10 @@ BrdfData PrepareEvaluationBrdfData(Material material, vec3 V, vec3 N, vec3 L)
 	float NdotL = dot(data.N, data.L);
 
 	// eta to estimate in and out refractive direction, based on V backfacing
-	data.incidentIor = NdotV <= 0.0f ? material.refraction : (1.0f / material.refraction);
+	data.eta = NdotV <= 0.0f ? material.refraction : (1.0f / material.refraction);
 
 	// Calculate half vector based on eta, based on L backfacing
-	data.H = NdotL <= 0.0f ? normalize(L + V * data.incidentIor) : normalize(L + V);
+	data.H = NdotL <= 0.0f ? normalize(L + V * data.eta) : normalize(L + V);
 
 	// Avoid half vector going into ground
 	float NdotH = dot(N, data.H);
@@ -860,375 +1349,20 @@ BrdfData PrepareEvaluationBrdfData(Material material, vec3 V, vec3 N, vec3 L)
 	data.HdotY = dot(data.H, data.Y);
 
 	// Pre-calculate some more BRDF terms
-	data.F0 = IorToF0(1.0f, data.incidentIor);
+	data.f0	 = IorToF0(1.0f, data.eta);
+	data.f90 = clamp(dot(vec3(data.f0), vec3(50.0f * 0.33f)), 0.0f, 1.0f);
 
 	return data;
 }
 
 // --------------------------------------------------------
 
-float SchlickFresnel(float u)
+vec2 GetSphericalCoordinates(vec3 V)
 {
-    float m = clamp(1.0f - u, 0.0f, 1.0f);
-    float m2 = m * m;
-    return m2 * m2 * m; // pow(m,5)
-}
+    float u = atan(V.z, V.x) * ONE_OVER_TWO_PI + 0.5f;
+	float v = 0.5f - asin(V.y) * ONE_OVER_PI;
 
-float DielectricFresnel(float cosThetaI, float eta)
-{
-    float sinThetaTSq = eta * eta * (1.0f - cosThetaI * cosThetaI);
-
-    // Total internal reflection
-    if (sinThetaTSq > 1.0)
-        return 1.0;
-
-    float cosThetaT = sqrt(max(1.0 - sinThetaTSq, 0.0));
-
-    float rs = (eta * cosThetaT - cosThetaI) / (eta * cosThetaT + cosThetaI);
-    float rp = (eta * cosThetaI - cosThetaT) / (eta * cosThetaI + cosThetaT);
-
-    return 0.5f * (rs * rs + rp * rp);
-}
-
-float GTR1(float NdotH, float a)
-{
-	if (a >= 1.0f) return ONE_OVER_PI;
-    float a2 = a * a;
-    float t = 1.0f + (a2 - 1.0f) * NdotH * NdotH;
-    return (a2 - 1.0f) / (PI * log(a2) * t);
-}
-
-float GTR2(float NdotH, float a)
-{
-    float a2 = a * a;
-    float t = 1.0f + (a2 - 1.0f) * NdotH * NdotH;
-    return a2 / (PI * t * t);
-}
-
-float GTR2_aniso(float NdotH, float HdotX, float HdotY, float ax, float ay)
-{
-    return 1.0f / (PI * ax * ay * sqr(sqr(HdotX / ax) + sqr(HdotY / ay) + NdotH * NdotH));
-}
-
-float smithG_GGX(float NdotV, float alphaG)
-{
-    float a = alphaG * alphaG;
-    float b = NdotV * NdotV;
-    return 1.0f / (NdotV + sqrt(a + b - a * b));
-}
-
-float smithG_GGX_aniso(float NdotV, float VdotX, float VdotY, float ax, float ay)
-{
-    return 1.0f / (NdotV + sqrt(sqr(VdotX * ax) + sqr(VdotY * ay) + sqr(NdotV)));
-}
-
-void TintColors(Material material, BrdfData brdfData, out vec3 Csheen, out vec3 Cspec0)
-{
-	vec3 Cdlin = material.albedo;
-	float Cdlum = Luminance(Cdlin);
-	vec3 Ctint = Cdlum > 0.0f ? Cdlin / Cdlum : vec3(1.0f);
-
-    Cspec0 = brdfData.F0 * mix(vec3(1.0f), Ctint, material.specularTint); // 0° Specular Color
-	Csheen = mix(vec3(1.0f), Ctint, material.sheenTint); // Sheen Color
-}
-
-vec3 EvaluateDisneyDiffuse(Material material, BrdfData brdfData, vec3 Csheen, out float pdf)
-{
-	pdf = 0.0f;
-	if (brdfData.NdotL <= 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-	float Rr = 2.0f * brdfData.LdotH * brdfData.LdotH * material.roughness;
-
-	// Diffuse Fresnel - Go from 1 at normal incidence to 0.5 at grazing
-	// and mix in diffuse retro-reflection based on roughness
-    float Fd90 = 0.5f + Rr;
-    float FL = SchlickFresnel(brdfData.NdotL);
-    float FV = SchlickFresnel(brdfData.NdotV);
-    float Fd = mix(1.0f, Fd90, FL) * mix(1.0f, Fd90, FV);
-
-	// Subsurface Scattering - based on Hanrahan-Krueger BRDF approximation of isotropic bssrdf
-	// 1.25 scale is used to (roughly) preserve albedo
-	// Fss90 used to "flatten" retroreflection based on roughness
-    float Fss90 = 0.5f * Rr;
-    float Fss = mix(1.0f, Fss90, FL) * mix(1.0f, Fss90, FV);
-    float ss = 1.25f * (Fss * (1.0f / (brdfData.NdotL + brdfData.NdotV) - 0.5f) + 0.5f);
-
-	// Sheen
-	float FH = SchlickFresnel(brdfData.LdotH);
-	vec3 Fsheen = FH * material.sheenRoughness * Csheen;
-
-	pdf = brdfData.NdotL * ONE_OVER_PI;
-	return ONE_OVER_PI * material.albedo * mix(Fd, ss, material.subsurface) + Fsheen;
-}
-
-vec3 EvaluateMicrofacetReflection(Material material, BrdfData brdfData, vec3 F, out float pdf)
-{
-	pdf = 0.0f;
-	if (brdfData.NdotL <= 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-	float D = GTR2_aniso(brdfData.NdotH, dot(brdfData.H, brdfData.X), dot(brdfData.H, brdfData.Y), brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY);
-	float G1 = smithG_GGX_aniso(abs(brdfData.NdotV), dot(brdfData.V, brdfData.X), dot(brdfData.V, brdfData.Y), brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY);
-	float G2 = G1 * smithG_GGX_aniso(abs(brdfData.NdotL), dot(brdfData.L, brdfData.X), dot(brdfData.L, brdfData.Y), brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY);
-
-	pdf = G1 * D / (4.0f * brdfData.NdotV);
-	return F * D * G2 / (4.0f * brdfData.NdotL * brdfData.NdotV);
-}
-
-vec3 EvaluateMicrofacetRefraction(Material material, BrdfData brdfData, vec3 F, out float pdf)
-{
-	pdf = 0.0f;
-	if (brdfData.NdotL >= 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-	float D = GTR2_aniso(brdfData.NdotH, brdfData.HdotX, brdfData.HdotY, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY);
-	float G1 = smithG_GGX_aniso(abs(brdfData.NdotV), brdfData.VdotX, brdfData.VdotY, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY);
-	float G2 = G1 * smithG_GGX_aniso(abs(brdfData.NdotL), brdfData.LdotX, brdfData.LdotY, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY);
-
-	float denom = brdfData.LdotH + brdfData.VdotH * brdfData.incidentIor;
-	denom *= denom;
-	float eta2 = brdfData.incidentIor * brdfData.incidentIor;
-	float jacobian = abs(brdfData.LdotH) / denom;
-
-	pdf = G1 * max(0.0f, brdfData.VdotH) * D * jacobian / brdfData.NdotV;
-	return pow(material.albedo, vec3(0.5f)) * (1.0f - F) * D * G2 * abs(brdfData.VdotH) * jacobian * eta2 / abs(brdfData.NdotL * brdfData.NdotV);
-}
-
-vec3 EvaluateClearcoat(Material material, BrdfData brdfData, out float pdf)
-{
-	pdf = 0.0f;
-	if (brdfData.NdotL <= 0.0f)
-	{
-		return vec3(0.0f);
-	}
-
-    float F = mix(0.04f, 1.0f, SchlickFresnel(brdfData.VdotH));
-	float D = GTR1(brdfData.NdotH, brdfData.alphaClearcoat);
-    float G = smithG_GGX(brdfData.NdotL, 0.25f) * smithG_GGX(brdfData.NdotV, 0.25f);
-	float jacobian = 1.0f / (4.0f * brdfData.VdotH);
-
-	pdf = D * brdfData.NdotH * jacobian;
-	return vec3(F) * D * G;
-}
-
-vec3 SampleDisneyBrdf(Material material, BrdfData brdfData, inout uint rngState)
-{
-	// Tint colors
-	vec3 Csheen, Cspec0;
-	TintColors(material, brdfData, Csheen, Cspec0);
-
-	// Model weights
-	float dielectricWeight = (1.0f - material.metallic) * (1.0f - material.transmission);
-	float metalWeight = material.metallic;
-	float glassWeight = (1.0f - material.metallic) * material.transmission;
-
-	// Lobe probabilities
-	float schlickWeight = SchlickFresnel(brdfData.NdotV);
-	float diffuseProbability = dielectricWeight * Luminance(material.albedo);
-	float dielectricProbability = dielectricWeight * Luminance(mix(Cspec0, vec3(1.0f), schlickWeight));
-	float metalProbability = metalWeight * Luminance(mix(material.albedo, vec3(1.0f), schlickWeight));
-	float glassProbability = glassWeight;
-	float clearcoatProbability = 0.25f * material.clearcoat;
-
-	// Normalize probabilities
-	float invTotalWeight = 1.0f / (diffuseProbability + dielectricProbability + metalProbability + glassProbability + clearcoatProbability);
-	diffuseProbability *= invTotalWeight;
-	dielectricProbability *= invTotalWeight;
-	metalProbability *= invTotalWeight;
-	glassProbability *= invTotalWeight;
-	clearcoatProbability *= invTotalWeight;
-
-	// CDF of the sampling probabilities
-	float cdf[5];
-    cdf[0] = diffuseProbability;
-    cdf[1] = cdf[0] + dielectricProbability;
-    cdf[2] = cdf[1] + metalProbability;
-    cdf[3] = cdf[2] + glassProbability;
-    cdf[4] = cdf[3] + clearcoatProbability;
-
-	// Sample Xi
-	vec3 Xi = RandomValueVec3(rngState);
-
-	// Sample a lobe based on its importance
-	float rd = Xi.z;
-
-	if (rd < cdf[0]) // Diffuse
-	{
-		vec3 H = HemispherepointCos(Xi.x, Xi.y);
-
-		// To world
-		H = ToWorld(brdfData.N, H);
-
-		return H;
-	}
-	else if (rd < cdf[2]) // Dielectric + Metallic reflection
-	{
-		// Sample direction
-		vec3 tangentV = ToLocal(brdfData.N, brdfData.V);
-		vec3 H = SampleGGXVNDF(tangentV, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, Xi.xy);
-
-		// Avoid scattered ray going into ground
-		if (H.z < 0.0f)
-			H = -H;
-
-		// To world
-		H = ToWorld(brdfData.N, H);
-
-		return normalize(reflect(-brdfData.V, H));
-	}
-	else if (rd < cdf[3]) // Glass
-	{
-		// Sample direction
-		vec3 tangentV = ToLocal(brdfData.N, brdfData.V);
-		vec3 H = SampleGGXVNDF(tangentV, brdfData.alphaAnisotropicX, brdfData.alphaAnisotropicY, Xi.xy);
-
-		// Avoid scattered ray going into ground
-		if (H.z < 0.0f)
-			H = -H;
-
-		// To world
-		H = ToWorld(brdfData.N, H);
-
-		float F = DielectricFresnel(abs(dot(brdfData.V, H)), brdfData.incidentIor);
-
-		// Rescale random number for reuse
-		rd = (rd - cdf[2]) / (cdf[3] - cdf[2]);
-
-		// Reflection
-		if (rd < F)
-		{
-			return normalize(reflect(-brdfData.V, H));
-		}
-		else // Transmission
-		{
-			return normalize(refract(-brdfData.V, H, brdfData.incidentIor));
-		}
-	}
-	else // Clearcoat
-	{
-		// Sample direction
-		vec3 H = SampleGTR1(Xi.xy, brdfData.alphaClearcoat);
-
-		// Avoid scattered ray going into ground
-		if (H.z < 0.0f)
-			H = -H;
-
-		// To world
-		H = ToWorld(brdfData.N, H);
-
-		return normalize(reflect(-brdfData.V, H));
-	}
-}
-
-// Based on: https://github.com/wdas/brdf/blob/main/src/brdfs/disney.brdf
-vec3 EvaluateDisneyBrdf(Material material, BrdfData brdfData, out float pdf)
-{
-	pdf = 0.0f;
-	vec3 f = vec3(0.0f);
-
-	// Tint colors
-	vec3 Csheen, Cspec0;
-	float F0 = brdfData.F0;
-	TintColors(material, brdfData, Csheen, Cspec0);
-
-	// Model weights
-	float dielectricWeight = (1.0f - material.metallic) * (1.0f - material.transmission);
-	float metalWeight = material.metallic;
-	float glassWeight = (1.0f - material.metallic) * material.transmission;
-
-	// Lobe probabilities
-	float schlickWeight = SchlickFresnel(brdfData.NdotV);
-	float diffuseProbability = dielectricWeight * Luminance(material.albedo);
-	float dielectricProbability = dielectricWeight * Luminance(mix(Cspec0, vec3(1.0f), schlickWeight));
-	float metalProbability = metalWeight * Luminance(mix(material.albedo, vec3(1.0f), schlickWeight));
-	float glassProbability = glassWeight;
-	float clearcoatProbability = 0.25f * material.clearcoat;
-
-	// Normalize probabilities
-	float invTotalWeight = 1.0f / (diffuseProbability + dielectricProbability + metalProbability + glassProbability + clearcoatProbability);
-	diffuseProbability *= invTotalWeight;
-	dielectricProbability *= invTotalWeight;
-	metalProbability *= invTotalWeight;
-	glassProbability *= invTotalWeight;
-	clearcoatProbability *= invTotalWeight;
-
-	bool reflection = brdfData.NdotL * brdfData.NdotV > 0.0f;
-
-	float tmpPdf = 0.0f;
-	float VdotH = abs(brdfData.VdotH);
-
-	// Diffuse
-	if (diffuseProbability > 0.0f && reflection)
-	{
-		f += EvaluateDisneyDiffuse(material, brdfData, Csheen, tmpPdf) * dielectricWeight;
-		pdf += tmpPdf * diffuseProbability;
-	}
-
-	// Dielectric Reflection
-	if (dielectricProbability > 0.0f && reflection)
-	{
-		// Normalize for interpolating based on Cspec0
-		float F = (DielectricFresnel(VdotH, 1.0f / material.refraction) - F0) / (1.0f - F0);
-
-		f += EvaluateMicrofacetReflection(material, brdfData, mix(Cspec0, vec3(1.0f), F), tmpPdf) * dielectricWeight;
-		pdf += tmpPdf * dielectricProbability;
-	}
-
-	// Metallic reflection
-	if (metalProbability > 0.0f && reflection)
-	{
-		// Tinted to albedo
-		vec3 F = mix(material.albedo, vec3(1.0f), SchlickFresnel(VdotH));
-
-		f += EvaluateMicrofacetReflection(material, brdfData, F, tmpPdf) * metalWeight;
-		pdf += tmpPdf * metalProbability;
-	}
-
-	// Glass/Specular BSDF
-	if (glassProbability > 0.0f)
-	{
-		// Dielectric fresnel (achromatic)
-		float F = DielectricFresnel(VdotH, brdfData.incidentIor);
-
-		if (reflection)
-		{
-			f += EvaluateMicrofacetReflection(material, brdfData, vec3(F), tmpPdf) * glassWeight;
-			pdf += tmpPdf * glassProbability * F;
-		}
-		else
-		{
-			f += EvaluateMicrofacetRefraction(material, brdfData, vec3(F), tmpPdf) * glassWeight;
-			pdf += tmpPdf * glassProbability * (1.0f - F);
-		}
-	}
-
-	// Clearcoat
-	if (clearcoatProbability > 0.0f && reflection)
-	{
-		f += EvaluateClearcoat(material, brdfData, tmpPdf) * 0.25f * material.clearcoat;
-		pdf += tmpPdf * clearcoatProbability;
-	}
-
-	// Apply NdotL
-	return f * abs(brdfData.NdotL);
-}
-
-// --------------------------------------------------------
-
-vec2 GetSphericalCoord(vec3 V)
-{
-    vec2 uv = vec2(atan(V.z, V.x), asin(V.y));
-    uv /= vec2(TWO_PI, PI);
-    uv += 0.5;
-    uv.y = 1.0 - uv.y;
-    return uv;
+    return vec2(u, v);
 }
 
 // Sample from the precomputed HDRI cache
@@ -1256,7 +1390,7 @@ vec3 EvaluateHdri(vec3 L, out float pdf)
 	vec3 color = vec3(0.0f);
 	pdf = 0.0;
 
-	vec2 uv = GetSphericalCoord(normalize(L));
+	vec2 uv = GetSphericalCoordinates(normalize(L));
 
 	color = texture(sampler2D(environment.hdriHandle), uv).rgb;
 	pdf = texture(sampler2D(environment.hdriCacheHandle), uv).b; // Sample probability density
@@ -1273,102 +1407,36 @@ vec3 EvaluateHdri(vec3 L, out float pdf)
 	return color;
 }
 
-// Get HDRI environment color
-vec3 GetHdriColor(vec3 L)
-{
-	vec2 uv = GetSphericalCoord(normalize(L));
-	return texture(sampler2D(environment.hdriHandle), uv).rgb;
-}
-
 // --------------------------------------------------------
 
-vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
+void PathTrace(Ray ray, inout vec3 radianceResult, inout vec3 primaryAlbedoResult, inout vec3 primaryNormalResult, inout uint rngState)
 {
-	HitInfo hitInfo = primaryHit;
-
 	vec3 radiance	= vec3(0.0f); // Energy
 	vec3 throughput	= vec3(1.0f); // Recursively accumulated color
-	vec3 absorption = vec3(0.0f);
+
+	vec3 f = vec3(1.0f);	// BRDF value
+	float pdfBRDF = 1.0f;	// PDF
 
 	const uint MaxBounceCount = 3;
-	for (uint bounce = 0; bounce <= MaxBounceCount; bounce++)
+	for (uint bounce = 0; bounce < MaxBounceCount; bounce++)
 	{
-		vec3 V = -hitInfo.hitDirection;
-		vec3 N = hitInfo.shadingNormal;
-		float eta = dot(N, -V) < 0.0f ? (1.0f / hitInfo.material.refraction) : hitInfo.material.refraction;
-
-		Material material = hitInfo.material;
-
-		Ray hdriRay;
-		hdriRay.origin = OffsetRay(hitInfo.hitPosition, hitInfo.geometryNormal);
-		hdriRay.direction = SampleHdri(rngState);
-
-		// Perform intersection test to check for occlusion
-		if (dot(N, hdriRay.direction) > 0.0f)
-		{
-			// Cast shadow ray
-			HitInfo hdriHitInfo = HitBvh(hdriRay);
-
-			// Only continue light calculation if there is no occlusion toward light
-			if (!hdriHitInfo.didHit)
-			{
-				// Sample light to get direction L
-				vec3 L = hdriRay.direction;
-
-				// Obtain light color and probability density for the direction L
-				float pdfLight = 0.0f;
-				vec3 colorLight = EvaluateHdri(L, pdfLight);
-
-				// Prepare evaluation BRDF data
-				BrdfData evaluationBrdfData = PrepareEvaluationBrdfData(material, V, N, L);
-
-				// Obtain the BRDF value and probability density for the direction L
-				float pdfBRDF = 0.0f;
-				vec3 f = EvaluateDisneyBrdf(material, evaluationBrdfData, pdfBRDF);
-
-				if (pdfBRDF > 0.0f)
-				{
-					// Multiple importance sampling
-					float misWeight = misMixWeight(pdfLight, pdfBRDF);
-					if (misWeight > 0.0f)
-					{
-						radiance += misWeight * throughput * colorLight * f / pdfLight;
-					}
-				}
-			}
-		}
-
-		// Prepare sample BRDF data
-		BrdfData samplingBrdfData = PrepareEvaluationBrdfData(material, V, N, vec3(0.0f));
-
-		// Sample BRDF to get a direction L
-		vec3 L = SampleDisneyBrdf(material, samplingBrdfData, rngState);
-
-		// Prepare evaluation BRDF data
-		BrdfData evaluationBrdfData = PrepareEvaluationBrdfData(material, V, N, L);
-
-		// Obtain the BRDF value and probability density for the direction L
-		float pdfBRDF = 0.0f;
-		vec3 f = EvaluateDisneyBrdf(material, evaluationBrdfData, pdfBRDF);
-		if (pdfBRDF <= 0.0f) break;
-
-		// Emissive contribution
-		vec3 emission = material.emission;
-		radiance += throughput * emission * f / pdfBRDF;
-
-		// Initialize ray of light
-		ray.origin = OffsetRay(hitInfo.hitPosition, hitInfo.geometryNormal);
-		ray.direction = L;
-		hitInfo = HitBvh(ray);
+		HitInfo hitInfo = HitBvhClosest(ray);
 
 		// Missed - HDRI light contribution
 		if (!hitInfo.didHit)
 		{
 			float pdfLight = 0.0f;
-			vec3 colorLight = EvaluateHdri(L, pdfLight);
+			vec3 colorLight = EvaluateHdri(ray.direction, pdfLight);
 
-			// Multiple importance sampling
-			float misWeight = misMixWeight(pdfBRDF, pdfLight);
+			float misWeight = 1.0f;
+
+			// Only MIS if there is data from previous bounce
+			if (bounce > 0u)
+			{
+				// Multiple importance sampling
+				misWeight = MisMixWeight(pdfBRDF, pdfLight);
+			}
+
 			if (misWeight > 0.0f)
 			{
 				// Indirect lighting rays are emitted according to BRDF distribution
@@ -1378,8 +1446,70 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 			break;
 		}
 
-		// Accumulate result
-		throughput *= f / pdfBRDF;
+		// Evaluate material to use for ray
+		Material evaluatedMaterial = GetEvaluatedMaterial(hitInfo);
+
+		// Common trace variables
+		vec3 V = -hitInfo.hitDirection;
+		vec3 N = hitInfo.shadingNormal;
+
+		// Emissive light contribution
+		vec3 emission = evaluatedMaterial.emission;
+		radiance += throughput * emission;
+
+		// Direct light contribution
+		Ray hdriRay;
+		hdriRay.origin = OffsetRay(hitInfo.hitPosition, hitInfo.geometryNormal);
+		hdriRay.direction = SampleHdri(rngState);
+
+		// Perform intersection test to check for occlusion
+		if (dot(N, hdriRay.direction) > 0.0f)
+		{
+			// Cast shadow ray
+			HitInfo hdriHitInfo = HitBvhAny(hdriRay);
+
+			// Only continue light calculation if there is no occlusion toward light
+			if (!hdriHitInfo.didHit)
+			{
+				// Sample light to get direction L
+				vec3 L = hdriRay.direction;
+
+				// Obtain light color and probability density based on direction L
+				float pdfLight = 0.0f;
+				vec3 colorLight = EvaluateHdri(L, pdfLight);
+
+				// Prepare evaluation BRDF data
+				BrdfData evaluationBrdfData = PrepareEvaluationBrdfData(evaluatedMaterial, V, N, L);
+
+				// Obtain the BRDF value and probability density based on direction L
+				pdfBRDF = 0.0f;
+				f = EvaluateDisneyBrdf(evaluatedMaterial, evaluationBrdfData, pdfBRDF);
+
+				if (pdfBRDF > 0.0f)
+				{
+					// Multiple importance sampling
+					float misWeight = MisMixWeight(pdfLight, pdfBRDF);
+					if (misWeight > 0.0f)
+					{
+						radiance += misWeight * throughput * colorLight * f / pdfLight;
+					}
+				}
+			}
+		}
+
+		// Prepare sample BRDF data
+		BrdfData samplingBrdfData = PrepareEvaluationBrdfData(evaluatedMaterial, V, N, vec3(0.0f));
+
+		// Sample BRDF to get a direction L
+		vec3 L = SampleDisneyBrdf(evaluatedMaterial, samplingBrdfData, rngState);
+
+		// Prepare evaluation BRDF data
+		BrdfData evaluationBrdfData = PrepareEvaluationBrdfData(evaluatedMaterial, V, N, L);
+
+		// Obtain the BRDF value and probability density for the direction L
+		pdfBRDF = 0.0f;
+		f = EvaluateDisneyBrdf(evaluatedMaterial, evaluationBrdfData, pdfBRDF);
+		if (pdfBRDF <= 0.0f) break;
 
 		// Russian roulette
 		// Random early exit if ray colour is nearly 0 (can't contribute much to final result)
@@ -1389,9 +1519,23 @@ vec3 PathTrace(HitInfo primaryHit, Ray ray, inout uint rngState)
 			break;
 		}
 		throughput *= 1.0f / p;
+
+		// Accumulate result
+		throughput *= f / pdfBRDF;
+
+		// Setup ray for the next bounce
+		ray.origin = OffsetRay(hitInfo.hitPosition, hitInfo.geometryNormal);
+		ray.direction = L;
+
+		// Save data on the first bounce
+		if (hitInfo.didHit && bounce == 0)
+		{
+			primaryAlbedoResult = evaluatedMaterial.albedo;
+			primaryNormalResult = hitInfo.shadingNormal;
+		}
 	}
 
-	return radiance;
+	radianceResult = radiance;
 }
 
 // --------------------------------------------------------
@@ -1476,10 +1620,101 @@ vec4 DebugHdriCache(vec2 uv)
 }
 
 // Debug BVH: Count BVH node intersections on a given ray
-vec4 DebugBvh(Ray debugRay)
+vec4 DebugBvh(Ray ray)
 {
-	vec3 bvhColor = HitBvhDebug(debugRay);
-	return vec4(bvhColor, 1.0f);
+	uint hitCounter = 0;
+
+	// Stack
+	int stack[BVH_STACKSIZE];
+	int stackPointer = 0;
+
+	stack[stackPointer++] = 1;
+	while(stackPointer > 0)
+	{
+		int top = stack[--stackPointer];
+		BvhNode node = bvhNodes[top];
+
+		// If node is leaf, traverse primitives and find intersection
+		if (node.n > 0)
+		{
+			hitCounter++;
+		}
+		else
+		{
+			if (stackPointer < BVH_STACKSIZE)
+			{
+				// Find intersection with left and right boxes AABB
+				float dstLeft = FLT_MAX;
+				float dstRight = FLT_MAX;
+
+				if (node.left > 0.0f)
+				{
+					BvhNode leftNode = bvhNodes[node.left];
+					dstLeft = HitAABB(ray, leftNode.AA, leftNode.BB);
+				}
+
+				if (node.right > 0.0f)
+				{
+					BvhNode rightNode = bvhNodes[node.right];
+					dstRight = HitAABB(ray, rightNode.AA, rightNode.BB);
+				}
+
+				// Search in recent boxes
+				if (dstLeft > 0.0f && dstRight > 0.0f)
+				{
+					if (dstLeft < dstRight)
+					{
+						// Left first
+						stack[stackPointer++] = node.right;
+						stack[stackPointer++] = node.left;
+					}
+					else
+					{
+						// Right first
+						stack[stackPointer++] = node.left;
+						stack[stackPointer++] = node.right;
+					}
+				}
+				else if (dstLeft > 0.0f)
+				{
+					stack[stackPointer++] = node.left;
+				}
+				else if (dstRight > 0.0f)
+				{
+					stack[stackPointer++] = node.right;
+				}
+			}
+			else
+			{
+				hitCounter = 0xFFFFFFFF;
+				break;
+			}
+		}
+	}
+
+	if (hitCounter == 0xFFFFFFFF)
+	{
+		return vec4(1.0f, 0.0f, 1.0f, 1.0f); // error: stack overflow (purple)
+	}
+
+	// Heat map
+	const vec3 mapTex[] = {
+		vec3(0.0f, 0.0f, 0.0f),
+		vec3(0.0f, 0.0f, 1.0f),
+		vec3(0.0f, 1.0f, 1.0f),
+		vec3(0.0f, 1.0f, 0.0f),
+		vec3(1.0f, 1.0f, 0.0f),
+		vec3(1.0f, 0.0f, 0.0f),
+	};
+
+	const float mapTexLen = 5.0f;
+	const float maxHeat = 100.0f;
+	float l = clamp(float(hitCounter) / maxHeat, 0.0f, 1.0f) * mapTexLen;
+	vec3 a = mapTex[uint(floor(l))];
+	vec3 b = mapTex[uint(ceil(l))];
+	vec3 heatmap = mix(a, b, l - floor(l));
+
+	return vec4(heatmap, 1.0f);
 }
 
 // Choose debug output function
@@ -1510,7 +1745,7 @@ void main()
 	Ray debugRay = GeneratePinholeCameraRay(uv);
 	vec4 debugValue = DebugOutput(uv, debugRay);
 
-	imageStore(imgOutput, texelCoord, debugValue);
+	imageStore(radianceImage, texelCoord, debugValue);
 	return;
 #endif
 
@@ -1525,29 +1760,16 @@ void main()
 	// Initialize primary ray
 	Ray ray = GeneratePrimaryRay(uv, rngState);
 
-	// Generate primary hit information
-	HitInfo primaryHit = HitBvh(ray);
+	// Generate primary hit information, with materials
+	HitInfo primaryHit = HitBvhClosest(ray);
 
+	// Results
 	vec3 radianceResult = vec3(0.0f);
 	vec3 primaryAlbedoResult = vec3(0.0f);
 	vec3 primaryNormalResult = vec3(0.0f);
 
-	// No reason to trace if we hit background the first time
-	if (!primaryHit.didHit)
-	{
-		// Sample HDRI
-		vec3 L = ray.direction;
-		radianceResult = GetHdriColor(L);
-	}
-	else
-	{
-		// PathTrace 
-		radianceResult = PathTrace(primaryHit, ray, rngState);
-
-		// Fetch denoiser essentials
-		primaryAlbedoResult = primaryHit.material.albedo;
-		primaryNormalResult = primaryHit.shadingNormal;
-	}
+	// PathTrace
+	PathTrace(ray, radianceResult, primaryAlbedoResult, primaryNormalResult, rngState);
 	
 	// Temporal accumulation. Weigh the contributions to result in an average over all frames.
 	float weight = 1.0f / FrameCount;

@@ -204,12 +204,13 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Teapot.glb"));
     //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
 
+#if 1
     {
         // Specify material attributes
         Material::MaterialAttributes floorMaterialAttributes{ };
-        floorMaterialAttributes.albedo = glm::vec3(1.0f, 1.0f, 1.0f) * 0.5f;
-        //floorMaterialAttributes.metallic = 1.0f;
-        floorMaterialAttributes.roughness = 0.01f;
+        floorMaterialAttributes.albedo = glm::vec3(1.0f, 1.0f, 1.0f) * 0.7f;
+        floorMaterialAttributes.metallic = 1.0f;
+        floorMaterialAttributes.roughness = 0.2f;
 
         Model floorModel = loader.Load("Content/Models/Floor.glb");
         
@@ -223,17 +224,20 @@ void PathTracingApplication::InitializeModel()
     {
         // Specify material attributes
         Material::MaterialAttributes bunnyMaterialAttributes{ };
-        bunnyMaterialAttributes.albedo = glm::vec3(0.4f, 1.0f, 0.0f);
-        //bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f);
-        //bunnyMaterialAttributes.albedo = glm::vec3(0.6f, 0.0f, 1.0f);
+        //bunnyMaterialAttributes.emission = glm::vec3(1.0f, 0.73f, 0.05f) * 10.0f;
+        //bunnyMaterialAttributes.albedo = glm::vec3(0.4f, 1.0f, 0.0f) * 0.8f;
+        bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.8f;
+        //bunnyMaterialAttributes.albedo = glm::vec3(0.6f, 0.0f, 1.0f) * 0.8f;
         //bunnyMaterialAttributes.specular = 0.05f;
         //bunnyMaterialAttributes.metallic = 1.0f;
         bunnyMaterialAttributes.roughness = 0.05f;
+        //bunnyMaterialAttributes.sheenRoughness = 1.0f;
+        //bunnyMaterialAttributes.sheenTint = 1.0f;
         //bunnyMaterialAttributes.clearcoat = 1.0f;
-        //bunnyMaterialAttributes.clearcoatRoughness = 0.05f;
+        //bunnyMaterialAttributes.clearcoatRoughness = 0.01f;
         //bunnyMaterialAttributes.subsurface = 2.0f;
-        bunnyMaterialAttributes.transmission = 1.0f;
-        bunnyMaterialAttributes.refraction = 1.5f;
+        //bunnyMaterialAttributes.transmission = 1.0f;
+        //bunnyMaterialAttributes.refraction = 1.5f;
 
         Model bunnyModel = loader.Load("Content/Models/Bunny.glb");
         //Model bunnyModel = loader.Load("Content/Models/Cone.glb");
@@ -247,6 +251,7 @@ void PathTracingApplication::InitializeModel()
 
         m_models.push_back(bunnyModel);
     }
+#endif
 }
 
 void PathTracingApplication::InitializeCamera()
