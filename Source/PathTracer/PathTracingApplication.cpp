@@ -16,15 +16,13 @@
 #include <imgui.h>
 
 #include "Geometry/Mesh.h"
-#include "Geometry/Mesh.h"
 #include "Geometry/ShaderStorageBufferObject.h"
 #include <Asset/ModelLoader.h>
 #include <Geometry/VertexFormat.h>
 #include <iostream>
+#include "PathTracingRenderer.h"
 
-PathTracingApplication::PathTracingApplication()
-    : Application(1024, 1024, "PathTracer")
-    , m_renderer(GetDevice())
+PathTracingApplication::PathTracingApplication() : Application(1024, 1024, "PathTracer")
 {
     // OpenGL Extension Control
     if (!(GL_ARB_bindless_texture))
@@ -37,6 +35,13 @@ PathTracingApplication::PathTracingApplication()
         std::cerr << "64 bit shader integers extension is not supported by your vendor!" << std::endl;
         exit(-1);
     }
+
+    // Get width and height for renderer
+    int width, height;
+    GetMainWindow().GetDimensions(width, height);
+
+    // Create PathTracing Renderer
+    m_pathTracingRenderer = std::make_shared<PathTracingRenderer>(width, height, this, GetDevice());
 }
 
 void PathTracingApplication::Initialize()
@@ -46,12 +51,13 @@ void PathTracingApplication::Initialize()
     // Initialize DearImGUI
     m_imGui.Initialize(GetMainWindow());
 
+    // Initialize application specifics
     InitializeHdri();
     InitializeModel();
     InitializeCamera();
-    InitializeFramebuffer();
-    InitializeMaterial();
-    InitializeRenderer();
+    
+    // Initialize PathTracing Renderer
+    m_pathTracingRenderer->Initialize();
 }
 
 void PathTracingApplication::Update()
@@ -79,9 +85,9 @@ void PathTracingApplication::Update()
         InvalidateScene();
     }
 
-    // Set renderer camera
+    // Set PathTracing Renderer camera
     const Camera& camera = *m_cameraController.GetCamera()->GetCamera();
-    m_renderer.SetCurrentCamera(camera);
+    m_pathTracingRenderer->SetCurrentCamera(camera);
 
     // Update materials
     UpdateMaterial(camera, width, height);
@@ -105,7 +111,7 @@ void PathTracingApplication::Render()
     else
     {
         // Using path trace renderer
-        m_renderer.Render();
+        m_pathTracingRenderer->Render();
     }
 
     // Render the debug user interface
@@ -190,7 +196,7 @@ void PathTracingApplication::InitializeModel()
 
     // Load models
     //m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
-    //m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
+    m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Sponza/Sponza.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Bunny.glb"));
     //m_models.push_back(loader.Load("Content/Models/Circle.glb"));
@@ -204,7 +210,7 @@ void PathTracingApplication::InitializeModel()
     //m_models.push_back(loader.Load("Content/Models/Teapot.glb"));
     //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
 
-#if 1
+#if 0
     {
         // Specify material attributes
         Material::MaterialAttributes floorMaterialAttributes{ };
@@ -270,136 +276,29 @@ void PathTracingApplication::InitializeCamera()
     m_cameraController.SetCamera(sceneCamera);
 }
 
-void PathTracingApplication::InitializeFramebuffer()
-{
-    int width, height;
-    GetMainWindow().GetDimensions(width, height);
-
-    // Path Tracing Texture
-    m_pathTracingTexture = std::make_shared<Texture2DObject>();
-    m_pathTracingTexture->Bind();
-    m_pathTracingTexture->SetImage(0, width, height, TextureObject::FormatRGBA, TextureObject::InternalFormat::InternalFormatRGBA32F);
-    m_pathTracingTexture->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_LINEAR);
-    m_pathTracingTexture->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_LINEAR);
-    Texture2DObject::Unbind();
-
-    // Path Tracing Framebuffer
-    m_pathTracingFramebuffer = std::make_shared<FramebufferObject>();
-    m_pathTracingFramebuffer->Bind();
-    m_pathTracingFramebuffer->SetTexture(FramebufferObject::Target::Draw, FramebufferObject::Attachment::Color0, *m_pathTracingTexture);
-    m_pathTracingFramebuffer->SetDrawBuffers(std::array<FramebufferObject::Attachment, 1>({ FramebufferObject::Attachment::Color0 }));
-    FramebufferObject::Unbind();
-}
-
-void PathTracingApplication::InitializeMaterial()
-{
-    // Path Tracing material
-    {
-        // Create material
-        m_pathTracingMaterial = CreatePathTracingMaterial();
-
-        // Initialize material uniforms
-        // ...
-    }
-
-    // Path Tracing Copy material
-    {
-        // Create material
-        m_pathTracingCopyMaterial = CreatePostFXMaterial("Shaders/Renderer/copy.frag");
-
-        // Initialize material uniforms
-        // ...
-    }
-
-    // Tone Mapping material
-    {
-        // Create material
-        m_toneMappingMaterial = CreatePostFXMaterial("Shaders/tonemapping.frag");
-
-        // Initialize material uniforms
-        m_toneMappingMaterial->SetUniformValue("SourceTexture", m_pathTracingTexture);
-    }
-}
-
-void PathTracingApplication::InitializeRenderer()
-{
-    int width, height;
-    GetMainWindow().GetDimensions(width, height);
-
-    // Path Tracing render pass
-    m_renderer.AddRenderPass(std::make_unique<PathTracingRenderPass>(width, height, this, m_pathTracingMaterial, m_pathTracingFramebuffer));
-
-    // Tone Mapping render pass
-    m_renderer.AddRenderPass(std::make_unique<PostFXRenderPass>(m_toneMappingMaterial, m_renderer.GetDefaultFramebuffer()));
-}
-
 void PathTracingApplication::UpdateMaterial(const Camera& camera, int width, int height)
 {
     // Path Tracing material
     {
-        m_pathTracingMaterial->SetUniformValue("ViewMatrix", camera.GetViewMatrix());
-        m_pathTracingMaterial->SetUniformValue("ProjMatrix", camera.GetProjectionMatrix());
-        m_pathTracingMaterial->SetUniformValue("InvProjMatrix", glm::inverse(camera.GetProjectionMatrix()));
-        m_pathTracingMaterial->SetUniformValue("FrameCount", m_frameCount);
-        m_pathTracingMaterial->SetUniformValue("FrameDimensions", glm::vec2((float)width, (float)height));
-        m_pathTracingMaterial->SetUniformValue("AntiAliasingEnabled", (unsigned int)m_AntiAliasingEnabled);
-        m_pathTracingMaterial->SetUniformValue("FocalLength", m_focalLength);
-        m_pathTracingMaterial->SetUniformValue("ApertureSize", m_apertureSize);
-        m_pathTracingMaterial->SetUniformValue("ApertureShape", m_apertureShape);
-        m_pathTracingMaterial->SetUniformValue("DebugValueA", m_debugValueA);
-        m_pathTracingMaterial->SetUniformValue("DebugValueB", m_debugValueB);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ViewMatrix", camera.GetViewMatrix());
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ProjMatrix", camera.GetProjectionMatrix());
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("InvProjMatrix", glm::inverse(camera.GetProjectionMatrix()));
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("FrameCount", m_frameCount);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("FrameDimensions", glm::vec2((float)width, (float)height));
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("AntiAliasingEnabled", (unsigned int)m_AntiAliasingEnabled);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("FocalLength", m_focalLength);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ApertureSize", m_apertureSize);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ApertureShape", m_apertureShape);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("DebugValueA", m_debugValueA);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("DebugValueB", m_debugValueB);
     }
 
     // Tone Mapping material
     {
-        m_toneMappingMaterial->SetUniformValue("Exposure", m_exposure);
-        m_toneMappingMaterial->SetUniformValue("DebugValueA", m_debugValueA);
-        m_toneMappingMaterial->SetUniformValue("DebugValueB", m_debugValueB);
+        m_pathTracingRenderer->GetToneMappingMaterial()->SetUniformValue("Exposure", m_exposure);
+        m_pathTracingRenderer->GetToneMappingMaterial()->SetUniformValue("DebugValueA", m_debugValueA);
+        m_pathTracingRenderer->GetToneMappingMaterial()->SetUniformValue("DebugValueB", m_debugValueB);
     }
-}
-
-std::shared_ptr<Material> PathTracingApplication::CreatePathTracingMaterial()
-{
-    std::vector<const char*> computeShaderPaths;
-    computeShaderPaths.push_back("Shaders/Library/version.glsl");
-    computeShaderPaths.push_back("Shaders/Library/common.glsl");
-    computeShaderPaths.push_back("Shaders/Library/resources.glsl");
-    computeShaderPaths.push_back("Shaders/Library/utility.glsl");
-    computeShaderPaths.push_back("Shaders/Library/intersection.glsl");
-    computeShaderPaths.push_back("Shaders/Library/montecarlo.glsl");
-    computeShaderPaths.push_back("Shaders/Library/brdf.glsl");
-    computeShaderPaths.push_back("Shaders/Library/disney.glsl");
-    computeShaderPaths.push_back("Shaders/Library/hdri.glsl");
-    computeShaderPaths.push_back("Shaders/Library/debug.glsl");
-    computeShaderPaths.push_back("Shaders/pathtracing.comp");
-    Shader computeShader = ShaderLoader(Shader::ComputeShader).Load(computeShaderPaths);
-
-    std::shared_ptr<ShaderProgram> shaderProgramPtr = std::make_shared<ShaderProgram>();
-    shaderProgramPtr->Build(computeShader);
-
-    // Create material
-    std::shared_ptr<Material> material = std::make_shared<Material>(shaderProgramPtr);
-
-    return material;
-}
-
-std::shared_ptr<Material> PathTracingApplication::CreatePostFXMaterial(const char* fragmentShaderPath)
-{
-    std::vector<const char*> vertexShaderPaths;
-    vertexShaderPaths.push_back("Shaders/Renderer/fullscreen.vert");
-    Shader vertexShader = ShaderLoader(Shader::VertexShader).Load(vertexShaderPaths);
-
-    std::vector<const char*> fragmentShaderPaths;
-    fragmentShaderPaths.push_back(fragmentShaderPath);
-    Shader fragmentShader = ShaderLoader(Shader::FragmentShader).Load(fragmentShaderPaths);
-
-    std::shared_ptr<ShaderProgram> shaderProgramPtr = std::make_shared<ShaderProgram>();
-    shaderProgramPtr->Build(vertexShader, fragmentShader);
-
-    // Create material
-    std::shared_ptr<Material> material = std::make_shared<Material>(shaderProgramPtr);
-
-    return material;
 }
 
 void PathTracingApplication::RenderGUI()

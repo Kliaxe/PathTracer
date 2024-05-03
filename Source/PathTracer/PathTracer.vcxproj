@@ -175,11 +175,13 @@ xcopy /s /d "$(ProjectDir)Content" "$(OutDir)Content\"</Command>
   <ItemGroup>
     <ClCompile Include="BVH.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="PathTracingRenderer.cpp" />
     <ClCompile Include="PathTracingRenderPass.cpp" />
     <ClCompile Include="PathTracingApplication.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BVH.h" />
+    <ClInclude Include="PathTracingRenderer.h" />
     <ClInclude Include="PathTracingRenderPass.h" />
     <ClInclude Include="PathTracingApplication.h" />
   </ItemGroup>
