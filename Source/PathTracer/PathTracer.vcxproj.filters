@@ -6,12 +6,14 @@
     <ClCompile Include="PathTracingRenderPass.cpp" />
     <ClCompile Include="BVH.cpp" />
     <ClCompile Include="PathTracingRenderer.cpp" />
+    <ClCompile Include="PathTracingRendererSceneVisitor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PathTracingApplication.h" />
     <ClInclude Include="PathTracingRenderPass.h" />
     <ClInclude Include="BVH.h" />
     <ClInclude Include="PathTracingRenderer.h" />
+    <ClInclude Include="PathTracingRendererSceneVisitor.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\pathtracing.comp" />

@@ -136,6 +136,13 @@ void TextureObject::GetTextureData(GLint level, Format format, Data::Type type, 
     glGetTexImage(GetTarget(), level, format, (GLenum)type, pixels);
 }
 
+void TextureObject::ClearTexture(GLint level, Format format, Data::Type type, const void* clearColor)
+{
+    assert(IsBound());
+    Handle handle = GetHandle();
+    glClearTexImage(handle, level, format, (GLenum)type, clearColor);
+}
+
 #ifndef NDEBUG
 bool TextureObject::IsValidFormat(Format format, InternalFormat internalFormat)
 {

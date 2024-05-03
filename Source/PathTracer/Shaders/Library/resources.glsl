@@ -8,10 +8,25 @@ uniform mat4 ProjMatrix;
 uniform mat4 InvProjMatrix;
 uniform uint FrameCount;
 uniform vec2 FrameDimensions;
+
 uniform uint AntiAliasingEnabled;
 uniform float FocalLength;
 uniform float ApertureSize;
 uniform vec2 ApertureShape;
+
+uniform float SpecularModifier;
+uniform float SpecularTintModifier;
+uniform float MetallicModifier;
+uniform float RoughnessModifier;
+uniform float SubsurfaceModifier;
+uniform float AnisotropyModifier;
+uniform float SheenRoughnessModifier;
+uniform float SheenTintModifier;
+uniform float ClearcoatModifier;
+uniform float ClearcoatRoughnessModifier;
+uniform float RefractionModifier;
+uniform float TransmissionModifier;
+
 uniform float DebugValueA;
 uniform float DebugValueB;
 

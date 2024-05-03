@@ -41,7 +41,7 @@ void PathTracingRenderPass::Render()
     // Path Tracing render
     if (m_pathTracingApplication->GetShouldPathTrace())
     {
-        assert(m_pathTracingApplication->GetPathTracingMaterial());
+        assert(m_pathTracingRenderer->GetPathTracingMaterial());
 
         // Mark all as resident
         for (const GLuint64& handle : m_pathTracingRenderer->GetBindlessHandles())

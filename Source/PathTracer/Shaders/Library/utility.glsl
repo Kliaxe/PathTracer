@@ -93,17 +93,17 @@ vec3 SampleNormalMap(sampler2D normalTexture, HitInfo hitInfo)
 
 Material EvaluateMaterial(Material material, inout HitInfo hitInfo)
 {
-	Material evalutedMaterial = material;
+	Material evaluatedMaterial = material;
 
 	if (material.emissionTextureHandle != 0)
 	{
 		vec3 emissionSample = texture(sampler2D(material.emissionTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.emission *= emissionSample;
+		evaluatedMaterial.emission *= emissionSample;
 	}
 	if (material.albedoTextureHandle != 0)
 	{
 		vec3 albedoSample = texture(sampler2D(material.albedoTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.albedo *= albedoSample;
+		evaluatedMaterial.albedo *= albedoSample;
 	}
 	if (material.normalTextureHandle != 0)
 	{
@@ -112,46 +112,60 @@ Material EvaluateMaterial(Material material, inout HitInfo hitInfo)
 	if (material.specularTextureHandle != 0)
 	{
 		float specularSample = texture(sampler2D(material.specularTextureHandle), hitInfo.uv).a;
-		evalutedMaterial.specular *= specularSample;
+		evaluatedMaterial.specular *= specularSample;
 	}
 	if (material.specularColorTextureHandle != 0)
 	{
 		vec3 specularColorSample = texture(sampler2D(material.specularColorTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.specularTint *= length(specularColorSample); // We only care about magnitude, color will be sampled according to Disney
+		evaluatedMaterial.specularTint *= length(specularColorSample); // We only care about magnitude, color will be sampled according to Disney
 	}
 	if (material.metallicRoughnessTextureHandle != 0)
 	{
 		vec2 metallicRoughnessSample = texture(sampler2D(material.metallicRoughnessTextureHandle), hitInfo.uv).rg;
-		evalutedMaterial.metallic *= metallicRoughnessSample.x;
-		evalutedMaterial.roughness *= metallicRoughnessSample.y;
+		evaluatedMaterial.metallic *= metallicRoughnessSample.x;
+		evaluatedMaterial.roughness *= metallicRoughnessSample.y;
 	}
 	if (material.sheenRoughnessTextureHandle != 0)
 	{
 		float sheenRoughnessSample = texture(sampler2D(material.sheenRoughnessTextureHandle), hitInfo.uv).a;
-		evalutedMaterial.sheenRoughness *= sheenRoughnessSample;
+		evaluatedMaterial.sheenRoughness *= sheenRoughnessSample;
 	}
 	if (material.sheenColorTextureHandle != 0)
 	{
 		vec3 sheenColorSample = texture(sampler2D(material.sheenColorTextureHandle), hitInfo.uv).rgb;
-		evalutedMaterial.sheenTint *= length(sheenColorSample); // We only care about magnitude, color will be sampled according to Disney
+		evaluatedMaterial.sheenTint *= length(sheenColorSample); // We only care about magnitude, color will be sampled according to Disney
 	}
 	if (material.clearcoatTextureHandle != 0)
 	{
 		float clearcoatSample = texture(sampler2D(material.clearcoatTextureHandle), hitInfo.uv).r;
-		evalutedMaterial.clearcoat *= clearcoatSample;
+		evaluatedMaterial.clearcoat *= clearcoatSample;
 	}
 	if (material.clearcoatRoughnessTextureHandle != 0)
 	{
 		float clearcoatRoughnessSample = texture(sampler2D(material.clearcoatRoughnessTextureHandle), hitInfo.uv).g;
-		evalutedMaterial.clearcoatRoughness *= clearcoatRoughnessSample;
+		evaluatedMaterial.clearcoatRoughness *= clearcoatRoughnessSample;
 	}
 	if (material.transmissionTextureHandle != 0)
 	{
 		float transmissionSample = texture(sampler2D(material.transmissionTextureHandle), hitInfo.uv).r;
-		evalutedMaterial.transmission *= transmissionSample;
+		evaluatedMaterial.transmission *= transmissionSample;
 	}
 
-	return evalutedMaterial;
+	// Apply modifiers
+	evaluatedMaterial.specular = clamp(evaluatedMaterial.specular + SpecularModifier, 0.0f, 1.0f);
+	evaluatedMaterial.specularTint = clamp(evaluatedMaterial.specularTint + SpecularTintModifier, 0.0f, 1.0f);
+	evaluatedMaterial.metallic = clamp(evaluatedMaterial.metallic + MetallicModifier, 0.0f, 1.0f);
+	evaluatedMaterial.roughness = clamp(evaluatedMaterial.roughness + RoughnessModifier, 0.0f, 1.0f);
+	evaluatedMaterial.subsurface = clamp(evaluatedMaterial.subsurface + SubsurfaceModifier, 0.0f, 1.0f);
+	evaluatedMaterial.anisotropy = clamp(evaluatedMaterial.anisotropy + AnisotropyModifier, 0.0f, 1.0f);
+	evaluatedMaterial.sheenRoughness = clamp(evaluatedMaterial.sheenRoughness + SheenRoughnessModifier, 0.0f, 1.0f);
+	evaluatedMaterial.sheenTint = clamp(evaluatedMaterial.sheenTint + SheenTintModifier, 0.0f, 1.0f);
+	evaluatedMaterial.clearcoat = clamp(evaluatedMaterial.clearcoat + ClearcoatModifier, 0.0f, 1.0f);
+	evaluatedMaterial.clearcoatRoughness = clamp(evaluatedMaterial.clearcoatRoughness + ClearcoatRoughnessModifier, 0.0f, 1.0f);
+	evaluatedMaterial.refraction = clamp(evaluatedMaterial.refraction + RefractionModifier, 1.01f, 2.0f);
+	evaluatedMaterial.transmission = clamp(evaluatedMaterial.transmission + TransmissionModifier, 0.0f, 1.0f);
+
+	return evaluatedMaterial;
 }
 
 Material GetEvaluatedMaterial(inout HitInfo hitInfo)
@@ -201,8 +215,8 @@ BrdfData PrepareEvaluationBrdfData(Material material, vec3 V, vec3 N, vec3 L)
 	data.alphaSquaredClearcoat = data.alphaClearcoat * data.alphaClearcoat;
 
 	// Kulla 2017, "Revisiting Physically Based Shading at Imageworks"
-	data.alphaAnisotropicX = max(0.0f, data.alpha * (1.0f + material.anisotropy));
-	data.alphaAnisotropicY = max(0.0f, data.alpha * (1.0f - material.anisotropy));
+	data.alphaAnisotropicX = max(0.002025f, data.alpha * (1.0f + material.anisotropy));
+	data.alphaAnisotropicY = max(0.002025f, data.alpha * (1.0f - material.anisotropy));
 
 	// Evaluate VNLHXY vectors
 	data.V = V;

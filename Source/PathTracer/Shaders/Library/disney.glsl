@@ -13,7 +13,7 @@ void TintColors(Material material, BrdfData brdfData, out vec3 Csheen, out vec3 
 {
 	vec3 Ctint = CalculateTint(material);
 
-	Cspec0 = brdfData.f0 * mix(vec3(1.0f), Ctint, material.specularTint); // 0° Specular Color
+	Cspec0 = brdfData.f0 * mix(vec3(1.0f), Ctint, material.specularTint) * material.specular; // 0° Specular Color
 	Csheen = mix(vec3(1.0f), Ctint, material.sheenTint); // Sheen Color
 }
 

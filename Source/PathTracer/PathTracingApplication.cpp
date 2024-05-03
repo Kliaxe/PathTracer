@@ -14,6 +14,8 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/transform.hpp>
 #include <imgui.h>
+#include "Scene/Scene.h"
+#include "Scene/SceneModel.h"
 
 #include "Geometry/Mesh.h"
 #include "Geometry/ShaderStorageBufferObject.h"
@@ -21,6 +23,7 @@
 #include <Geometry/VertexFormat.h>
 #include <iostream>
 #include "PathTracingRenderer.h"
+#include "PathTracingRendererSceneVisitor.h"
 
 PathTracingApplication::PathTracingApplication() : Application(1024, 1024, "PathTracer")
 {
@@ -51,13 +54,20 @@ void PathTracingApplication::Initialize()
     // Initialize DearImGUI
     m_imGui.Initialize(GetMainWindow());
 
-    // Initialize application specifics
-    InitializeHdri();
-    InitializeModel();
-    InitializeCamera();
-    
     // Initialize PathTracing Renderer
     m_pathTracingRenderer->Initialize();
+
+    // Initialize application specifics
+    InitializeCamera();
+    InitializeLoader();
+
+    // Process the chosen Hdri (based on default)
+    // Don't process here, we're going to process all buffers anyway
+    ProcessHdri(false);
+
+    // Process the chosen scene (based on default)
+    // Relies on HDRI and models
+    ProcessScene();
 }
 
 void PathTracingApplication::Update()
@@ -103,10 +113,10 @@ void PathTracingApplication::Render()
     if (m_shouldRasterizeAsPreview && m_cameraController.IsEnabled())
     {
         // Using traditional rasterization
-        for (Model model : m_models)
-        {
-            model.Draw();
-        }
+        //for (const Model& model : (SceneModel)m_currentScene.GetSceneNodes())
+        //{
+        //    model.Draw();
+        //}
     }
     else
     {
@@ -128,22 +138,23 @@ void PathTracingApplication::Cleanup()
 
 void PathTracingApplication::InvalidateScene()
 {
-    m_frameCount = 1;
-
     // If scene was dirty, we should reset the denoised state as well
+    m_frameCount = 1;
     m_denoiseProgress = 0.0f;
     m_denoised = false;
 }
 
-void PathTracingApplication::InitializeHdri()
+void PathTracingApplication::RefreshScene()
 {
-    m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/BrownPhotostudio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
-    //m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/ChineseGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
-    //m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/Meadow.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
-    //m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/SymmetricalGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+    // Reset to default state
+    m_frameCount = 0;
+    m_shouldPathTrace = false;
+    m_shouldDenoise = false;
+    m_denoiseProgress = 0.0f;
+    m_denoised = false;
 }
 
-void PathTracingApplication::InitializeModel()
+void PathTracingApplication::InitializeLoader()
 {
     // Load and build shader
     Shader vertexShader = ShaderLoader::Load(Shader::VertexShader, "Shaders/blinn-phong.vert");
@@ -172,31 +183,31 @@ void PathTracingApplication::InitializeModel()
         });
 
     // Configure loader
-    ModelLoader loader(material);
+    m_modelLoader = std::make_shared<ModelLoader>(material);
 
     // Create a new material copy for each submaterial
-    loader.SetCreateMaterials(true);
+    m_modelLoader->SetCreateMaterials(true);
 
     // Flip vertically textures loaded by the model loader
-    loader.GetTexture2DLoader().SetFlipVertical(true);
+    m_modelLoader->GetTexture2DLoader().SetFlipVertical(true);
 
-    // Material Arributes
-    loader.SetMaterialAttribute(VertexAttribute::Semantic::Position, "VertexPosition");
-    loader.SetMaterialAttribute(VertexAttribute::Semantic::Normal, "VertexNormal");
-    loader.SetMaterialAttribute(VertexAttribute::Semantic::TexCoord0, "VertexTexCoord");
+    // Specify exact semantics, must match VBO fetching, see VertexSave in PathTracingRenderer
+    m_modelLoader->SetSemanticAttribute(VertexAttribute::Semantic::Position);
+    m_modelLoader->SetSemanticAttribute(VertexAttribute::Semantic::Normal);
+    m_modelLoader->SetSemanticAttribute(VertexAttribute::Semantic::TexCoord0);
 
-    // Material Properties
-    loader.SetMaterialProperty(ModelLoader::MaterialProperty::DiffuseTexture, "DiffuseTexture");
-    loader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
+    // Material Arributes for rasterizer
+    m_modelLoader->SetMaterialAttribute(VertexAttribute::Semantic::Position, "VertexPosition");
+    m_modelLoader->SetMaterialAttribute(VertexAttribute::Semantic::Normal, "VertexNormal");
+    m_modelLoader->SetMaterialAttribute(VertexAttribute::Semantic::TexCoord0, "VertexTexCoord");
 
-    // Specify exact semantics, must match VBO fetching
-    loader.SetSemanticAttribute(VertexAttribute::Semantic::Position);
-    loader.SetSemanticAttribute(VertexAttribute::Semantic::Normal);
-    loader.SetSemanticAttribute(VertexAttribute::Semantic::TexCoord0);
+    // Material Properties for rasterizer
+    m_modelLoader->SetMaterialProperty(ModelLoader::MaterialProperty::DiffuseTexture, "DiffuseTexture");
+    m_modelLoader->SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
 
     // Load models
     //m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
-    m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
+    //m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Sponza/Sponza.gltf"));
     //m_models.push_back(loader.Load("Content/Models/Bunny.glb"));
     //m_models.push_back(loader.Load("Content/Models/Circle.glb"));
@@ -285,10 +296,25 @@ void PathTracingApplication::UpdateMaterial(const Camera& camera, int width, int
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("InvProjMatrix", glm::inverse(camera.GetProjectionMatrix()));
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("FrameCount", m_frameCount);
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("FrameDimensions", glm::vec2((float)width, (float)height));
+
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("AntiAliasingEnabled", (unsigned int)m_AntiAliasingEnabled);
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("FocalLength", m_focalLength);
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ApertureSize", m_apertureSize);
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ApertureShape", m_apertureShape);
+
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("SpecularModifier", m_specularModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("SpecularTintModifier", m_specularTintModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("MetallicModifier", m_metallicModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("RoughnessModifier", m_roughnessModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("SubsurfaceModifier", m_subsurfaceModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("AnisotropyModifier", m_anisotropyModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("SheenRoughnessModifier", m_sheenRoughnessModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("SheenTintModifier", m_sheenTintModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ClearcoatModifier", m_clearcoatModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("ClearcoatRoughnessModifier", m_clearcoatRoughnessModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("RefractionModifier", m_refractionModifier);
+        m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("TransmissionModifier", m_transmissionModifier);
+
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("DebugValueA", m_debugValueA);
         m_pathTracingRenderer->GetPathTracingMaterial()->SetUniformValue("DebugValueB", m_debugValueB);
     }
@@ -305,12 +331,13 @@ void PathTracingApplication::RenderGUI()
 {
     m_imGui.BeginFrame();
 
-    bool changed = false;
+    bool invalidate = false;
+    bool refresh = false;
 
     if (auto window = m_imGui.UseWindow("Frame Data"))
     {
-        float milliSeconds = GetDeltaTime() * 1000.0f;
-        ImGui::Text(std::string("Frame Render Time (ms): " + std::to_string(milliSeconds)).c_str());
+        float miliSeconds = GetDeltaTime() * 1000.0f;
+        ImGui::Text(std::string("Frame Render Time (ms): " + std::to_string(miliSeconds)).c_str());
 
         ImGui::Text(std::string("Frame Count: " + std::to_string(m_frameCount)).c_str());
         
@@ -337,37 +364,169 @@ void PathTracingApplication::RenderGUI()
         ImGui::Separator();
         ImGui::Spacing();
 
-        changed |= ImGui::InputInt("Max Frame Count", (int*)(&m_maxFrameCount));
-        //ImGui::Spacing();
-        ImGui::Checkbox("Denoiser Enabled", (bool*)(&m_denoiserEnabled));
-        //ImGui::Spacing();
-        changed |= ImGui::Button("Invalidate Scene");
-        //ImGui::Spacing();
-        changed |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
+        invalidate |= ImGui::InputInt("Max Frame Count", (int*)(&m_maxFrameCount));
+                      ImGui::Checkbox("Denoiser Enabled", (bool*)(&m_denoiserEnabled));
+        invalidate |= ImGui::Button("Invalidate Scene");
+        invalidate |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
-        changed |= ImGui::Checkbox("Anti-Aliasing", (bool*)(&m_AntiAliasingEnabled));
+        const char* hdriItems[] = { "Photostudio", "Chinese Garden", "Meadow", "Symmetrical Garden"};
+        int currentHdriItem = static_cast<int>(m_currentPathTracingHdri);
+
+        if (ImGui::Combo("Select HDRI", &currentHdriItem, hdriItems, IM_ARRAYSIZE(hdriItems)))
+        {
+            m_currentPathTracingHdri = static_cast<PathTracingHdri>(currentHdriItem);
+            ProcessHdri(true);
+
+            refresh = true;
+        }
+
+        const char* sceneItems[] = { "Test Scene 1", "TestScene 2" };
+        int currentSceneItem = static_cast<int>(m_currentPathTracingScene);
+
+        if (ImGui::Combo("Select Scene", &currentSceneItem, sceneItems, IM_ARRAYSIZE(sceneItems)))
+        {
+            m_currentPathTracingScene = static_cast<PathTracingScene>(currentSceneItem);
+            ProcessScene();
+
+            refresh = true;
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        invalidate |= ImGui::Checkbox("Anti-Aliasing", (bool*)(&m_AntiAliasingEnabled));
         ImGui::SliderFloat("Exposure", (float*)(&m_exposure), 0.0f, 5.0f);
 
         ImGui::Spacing();
 
-        changed |= ImGui::SliderFloat("Focal Length", (float*)(&m_focalLength), 0.0f, 15.0f);
-        changed |= ImGui::SliderFloat("Aperture Size", (float*)(&m_apertureSize), 0.0f, 1.0f);
-        changed |= ImGui::SliderFloat2("Aperture Shape", (float*)(&m_apertureShape), 0.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Focal Length", (float*)(&m_focalLength), 0.0f, 15.0f);
+        invalidate |= ImGui::SliderFloat("Aperture Size", (float*)(&m_apertureSize), 0.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat2("Aperture Shape", (float*)(&m_apertureShape), 0.0f, 1.0f);
 
         ImGui::Spacing();
 
-        changed |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 10.0f);
-        changed |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 10.0f);
+        invalidate |= ImGui::SliderFloat("Specular Modifier", (float*)(&m_specularModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Specular Tint Modifier", (float*)(&m_specularTintModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Metallic Modifier", (float*)(&m_metallicModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Roughness Modifier", (float*)(&m_roughnessModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Subsurface Modifier", (float*)(&m_subsurfaceModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Anisotropy Modifier", (float*)(&m_anisotropyModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Sheen Roughness Modifier", (float*)(&m_sheenRoughnessModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Sheen Tint Modifier", (float*)(&m_sheenTintModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Clearcoat Modifier", (float*)(&m_clearcoatModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Clearcoat Roughness Modifier", (float*)(&m_clearcoatRoughnessModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Refraction Modifier", (float*)(&m_refractionModifier), -1.0f, 1.0f);
+        invalidate |= ImGui::SliderFloat("Transmission Modifier", (float*)(&m_transmissionModifier), -1.0f, 1.0f);
+
+        ImGui::Spacing();
+
+        invalidate |= ImGui::SliderFloat("Debug Value A", (float*)(&m_debugValueA), 0.0f, 10.0f);
+        invalidate |= ImGui::SliderFloat("Debug Value B", (float*)(&m_debugValueB), 0.0f, 10.0f);
     }
 
-    if (changed)
+    if (refresh)
+    {
+        RefreshScene();
+    }
+    else if (invalidate)
     {
         InvalidateScene();
     }
 
     m_imGui.EndFrame();
+}
+
+void PathTracingApplication::ProcessHdri(bool processEnvironmentBuffer)
+{
+    switch (m_currentPathTracingHdri)
+    {
+    case PathTracingHdri::BrownPhotostudio:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/BrownPhotostudio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
+    case PathTracingHdri::ChineseGarden:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/ChineseGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
+    case PathTracingHdri::Meadow:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/Meadow.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
+    case PathTracingHdri::SymmetricalGarden:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/SymmetricalGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
+    default:
+        throw std::runtime_error("No such Path Tracing Hdri...");
+    };
+
+    // Once a Hdri has been chosen process the environment buffer for renderer
+    // This function calls application
+    if (processEnvironmentBuffer)
+    {
+        m_pathTracingRenderer->ProcessEnvironmentBuffer();
+    }
+}
+
+void PathTracingApplication::ProcessScene()
+{
+    // Before we load any scene let's clear any previous added models
+    m_pathTracingRenderer->ClearPathTracingModels();
+
+    Scene scene;
+    switch (m_currentPathTracingScene)
+    {
+    case PathTracingScene::TestScene1:
+        scene = LoadTestScene1();
+        break;
+    case PathTracingScene::TestScene2:
+        scene = LoadTestScene2();
+        break;
+    default:
+        throw std::runtime_error("No such Path Tracing scene...");
+    };
+
+    // Add the scene nodes to the renderer
+    PathTracingRendererSceneVisitor pathTracingRendererSceneVisitor(m_pathTracingRenderer);
+    scene.AcceptVisitor(pathTracingRendererSceneVisitor);
+
+    // Process buffers by renderer using the given models
+    m_pathTracingRenderer->ProcessBuffers();
+
+    int test = 0;
+}
+
+Scene PathTracingApplication::LoadTestScene1()
+{
+    std::shared_ptr<Model> bunnyModel = m_modelLoader->LoadShared("Content/Models/Bunny.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes bunnyMaterialAttributes{ };
+    bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.8f;
+    bunnyMaterialAttributes.roughness = 0.05f;
+
+    // Set material attributes
+    std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(bunnyModel->GetMaterial(0));
+    bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
+    bunnyModel->SetMaterial(0, bunnyMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("bunny", bunnyModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadTestScene2()
+{
+    std::shared_ptr<Model> dragonModel = m_modelLoader->LoadShared("Content/Models/Dragon.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    Scene testScene2;
+    testScene2.AddSceneNode(std::make_shared<SceneModel>("dragon", dragonModel));
+    testScene2.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene2;
 }

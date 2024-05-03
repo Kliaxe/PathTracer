@@ -18,18 +18,14 @@
 //#define DEBUG_EBO
 
 PathTracingRenderer::PathTracingRenderer(int width, int height, PathTracingApplication* pathTracingApplication, DeviceGL& device)
-    : Renderer(device), m_width(width), m_height(height), m_pathTracingApplication(pathTracingApplication)
-{
-}
+    : Renderer(device), m_width(width), m_height(height), m_pathTracingApplication(pathTracingApplication) { }
 
 void PathTracingRenderer::Initialize()
 {
     InitializeFramebuffer();
     InitializeMaterial();
     InitializeRenderPasses();
-
-    // Create buffers upon initialization
-    CreateBuffers();
+    InitializeBuffers();
 }
 
 void PathTracingRenderer::InitializeFramebuffer()
@@ -89,6 +85,14 @@ void PathTracingRenderer::InitializeRenderPasses()
 	AddRenderPass(std::make_unique<PostFXRenderPass>(m_toneMappingMaterial, GetDefaultFramebuffer()));
 }
 
+void PathTracingRenderer::InitializeBuffers()
+{
+    m_ssboEnvironment = std::make_shared<ShaderStorageBufferObject>();
+    m_ssboMaterials = std::make_shared<ShaderStorageBufferObject>();
+    m_ssboBvhNodes = std::make_shared<ShaderStorageBufferObject>();
+    m_ssboBvhPrimitives = std::make_shared<ShaderStorageBufferObject>();
+}
+
 std::shared_ptr<Material> PathTracingRenderer::CreatePathTracingMaterial()
 {
     std::vector<const char*> computeShaderPaths;
@@ -133,16 +137,54 @@ std::shared_ptr<Material> PathTracingRenderer::CreatePostFXMaterial(const char* 
     return material;
 }
 
-void PathTracingRenderer::CreateBuffers()
+void PathTracingRenderer::ClearPathTracingTexture()
 {
+    // Black with full opacity
+    GLubyte clearColor[4] = { 0, 0, 0, 255 };
+
+    m_pathTracingTexture->Bind();
+    //m_pathTracingTexture->ClearTexture(0, TextureObject::Format::FormatRGBA, Data::Type::Float, &clearColor);
+    m_pathTracingTexture->ClearTexture(0, TextureObject::Format::FormatRGBA, Data::Type::Float, &clearColor);
+    m_pathTracingTexture->Unbind();
+
+    m_pathTracingFramebuffer->Bind();
+    glClearTexImage(m_pathTracingFramebuffer->GetHandle(), 0, GL_RGBA, GL_FLOAT, &clearColor);
+    m_pathTracingFramebuffer->Unbind();
+}
+
+void PathTracingRenderer::AddPathTracingModel(const Model& model, const glm::mat4& worldMatrix)
+{
+    PathTracingModel pathTracingModel{ };
+    pathTracingModel.model = model;
+    pathTracingModel.worldMatrix = worldMatrix;
+
+    m_pathTracingModels.push_back(pathTracingModel);
+}
+
+void PathTracingRenderer::ClearPathTracingModels()
+{
+    m_pathTracingModels.clear();
+}
+
+void PathTracingRenderer::ProcessBuffers()
+{
+    std::cout << "Processing all buffers!" << std::endl;
+
+    // Clear bindless handles!
+    // We're going to fill it with new data
+    m_bindlessHandles.clear();
+
     // VBO and EBO data of all meshes
     std::vector<std::vector<VertexSave>>    totalVertexData;
     std::vector<std::vector<unsigned int>>  totalIndexData;
     std::vector<MaterialSave>               totalMaterialData;
 
     // Go through each model from application
-    for (Model model : m_pathTracingApplication->GetModels())
+    for (const PathTracingModel& pathTracingModel : m_pathTracingModels)
     {
+        // Fetch model
+        Model model = pathTracingModel.model;
+
         // Each model has one VBO, one EBO, one Material, per mesh, where there can be many meshes per model.
 
         Mesh& mesh = model.GetMesh();
@@ -367,252 +409,255 @@ void PathTracingRenderer::CreateBuffers()
         }
     }
 
-    // Environment allocation
+    // Convert corrosponding vertices to a format that BVH can use to build BVH nodes
+    std::vector<BVH::BvhPrimitive> bvhPrimitives;
+
+    for (unsigned int meshIndex = 0; meshIndex < totalIndexData.size(); meshIndex++)
     {
-        // Create SSBO for environment
-        m_ssboEnvironment = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboEnvironment->Bind();
+        const std::vector<VertexSave>& vertexData = totalVertexData[meshIndex];
+        const std::vector<unsigned int>& indexData = totalIndexData[meshIndex];
 
-        // Binding index
-        glBindBufferBase(m_ssboEnvironment->GetTarget(), 0, m_ssboEnvironment->GetHandle()); // Binding index: 0
-
-        // Get HDRI
-        std::shared_ptr<Texture2DObject> hdri = m_pathTracingApplication->GetHdri();
-
-        // Start timer
-        Timer timer("HDRI Cache");
-
-        // Calculate and save HDRI Cache
-        int hdriWidth, hdriHeight;
-        m_hdriCache = CalculateHdriCache(hdri, hdriWidth, hdriHeight);
-
-        // End time point in milliseconds and print
-        timer.Stop();
-        timer.Print();
-
-        // Get HDRI handle
-        const GLuint64 hdriHandle = hdri->GetBindlessTextureHandle();
-        if (hdriHandle == 0) { throw new std::runtime_error("Error! HDRI Handle returned null"); }
-        m_bindlessHandles.push_back(hdriHandle);
-
-        // Get HDRI Cache handle
-        const GLuint64 hdriCacheHandle = m_hdriCache->GetBindlessTextureHandle();
-        if (hdriCacheHandle == 0) { throw new std::runtime_error("Error! HDRI Cache Handle returned null"); }
-        m_bindlessHandles.push_back(hdriCacheHandle);
-
-        // Environment
-        EnvironmentAlign environment{ };
-        environment.hdriHandle = hdriHandle;
-        environment.hdriCacheHandle = hdriCacheHandle;
-        environment.hdriDimensions = glm::vec2(float(hdriWidth), float(hdriHeight));
-
-        // Convert to span
-        std::span<EnvironmentAlign> span = std::span(&environment, 1);
-
-        // Allocate
-        m_ssboEnvironment->AllocateData(span);
-        m_ssboEnvironment->Unbind();
-    }
-
-    // Material allocation
-    {
-        // Create SSBO for materials
-        m_ssboMaterials = std::make_shared<ShaderStorageBufferObject>();
-        m_ssboMaterials->Bind();
-
-        // Binding index
-        glBindBufferBase(m_ssboMaterials->GetTarget(), 1, m_ssboMaterials->GetHandle()); // Binding index: 1
-
-        // Convert to MaterialAlign for GPU consumption
-
-        std::vector<MaterialAlign> materialsAlign;
-        for (const MaterialSave& materialSave : totalMaterialData)
+        for (size_t i = 0; i < indexData.size(); i += 3)
         {
-            MaterialAlign materialAlign{ };
+            unsigned int index1 = indexData[i + 0];
+            unsigned int index2 = indexData[i + 1];
+            unsigned int index3 = indexData[i + 2];
 
-            // Texture handles
-            materialAlign.emissionTextureHandle = materialSave.emissionTextureHandle;
-            materialAlign.albedoTextureHandle = materialSave.albedoTextureHandle;
-            materialAlign.normalTextureHandle = materialSave.normalTextureHandle;
-            materialAlign.specularTextureHandle = materialSave.specularTextureHandle;
-            materialAlign.specularColorTextureHandle = materialSave.specularColorTextureHandle;
-            materialAlign.metallicRoughnessTextureHandle = materialSave.metallicRoughnessTextureHandle;
-            materialAlign.sheenRoughnessTextureHandle = materialSave.sheenRoughnessTextureHandle;
-            materialAlign.sheenColorTextureHandle = materialSave.sheenColorTextureHandle;
-            materialAlign.clearcoatTextureHandle = materialSave.clearcoatTextureHandle;
-            materialAlign.clearcoatRoughnessTextureHandle = materialSave.clearcoatRoughnessTextureHandle;
-            materialAlign.transmissionTextureHandle = materialSave.transmissionTextureHandle;
+            BVH::BvhPrimitive primitive{ };
 
-            // Attributes
-            materialAlign.emission = materialSave.emission;
-            materialAlign.albedo = materialSave.albedo;
-            materialAlign.specular = materialSave.specular;
-            materialAlign.specularTint = materialSave.specularTint;
-            materialAlign.metallic = materialSave.metallic;
-            materialAlign.roughness = materialSave.roughness;
-            materialAlign.subsurface = materialSave.subsurface;
-            materialAlign.anisotropy = materialSave.anisotropy;
-            materialAlign.sheenRoughness = materialSave.sheenRoughness;
-            materialAlign.sheenTint = materialSave.sheenTint;
-            materialAlign.clearcoat = materialSave.clearcoat;
-            materialAlign.clearcoatRoughness = materialSave.clearcoatRoughness;
-            materialAlign.refraction = materialSave.refraction;
-            materialAlign.transmission = materialSave.transmission;
+            primitive.posA = vertexData[index1].pos;
+            primitive.posB = vertexData[index2].pos;
+            primitive.posC = vertexData[index3].pos;
+
+            primitive.norA = vertexData[index1].nor;
+            primitive.norB = vertexData[index2].nor;
+            primitive.norC = vertexData[index3].nor;
+
+            primitive.uvA = vertexData[index1].uv;
+            primitive.uvB = vertexData[index2].uv;
+            primitive.uvC = vertexData[index3].uv;
+
+            primitive.meshIndex = meshIndex;
 
             // Push
-            materialsAlign.push_back(materialAlign);
-        }
-
-        // Convert to span
-        std::span<MaterialAlign> span = std::span(materialsAlign);
-
-        // Allocate
-        m_ssboMaterials->AllocateData(span);
-
-        m_ssboMaterials->Unbind();
-    }
-
-    // BVH allocation
-    {
-        // Convert corrosponding vertices to a format that BVH can use to build BVH nodes
-
-        std::vector<BVH::BvhPrimitive> bvhPrimitives;
-        for (unsigned int meshIndex = 0; meshIndex < totalIndexData.size(); meshIndex++)
-        {
-            const std::vector<VertexSave>& vertexData = totalVertexData[meshIndex];
-            const std::vector<unsigned int>& indexData = totalIndexData[meshIndex];
-
-            for (size_t i = 0; i < indexData.size(); i += 3)
-            {
-                unsigned int index1 = indexData[i + 0];
-                unsigned int index2 = indexData[i + 1];
-                unsigned int index3 = indexData[i + 2];
-
-                BVH::BvhPrimitive primitive{ };
-
-                primitive.posA = vertexData[index1].pos;
-                primitive.posB = vertexData[index2].pos;
-                primitive.posC = vertexData[index3].pos;
-
-                primitive.norA = vertexData[index1].nor;
-                primitive.norB = vertexData[index2].nor;
-                primitive.norC = vertexData[index3].nor;
-
-                primitive.uvA = vertexData[index1].uv;
-                primitive.uvB = vertexData[index2].uv;
-                primitive.uvC = vertexData[index3].uv;
-
-                primitive.meshIndex = meshIndex;
-
-                // Push
-                bvhPrimitives.push_back(primitive);
-            }
-        }
-
-        // Create SSBO for BVH nodes
-        {
-            // Create SSBO for BVH nodes
-            m_ssboBvhNodes = std::make_shared<ShaderStorageBufferObject>();
-            m_ssboBvhNodes->Bind();
-
-            // Binding index
-            glBindBufferBase(m_ssboBvhNodes->GetTarget(), 2, m_ssboBvhNodes->GetHandle()); // Binding index: 2
-
-            // Initialize BVH nodes
-            BVH::BvhNode initNode{ };
-            std::vector<BVH::BvhNode> bvhNodes{ initNode };
-
-            // Start timer
-            Timer timer("BVH Calculation");
-
-            // Calculate BVH
-            //BVH::BuildBvh(bvhPrimitives, bvhNodes, 0, (int)bvhPrimitives.size() - 1, 4);
-            BVH::BuildBvhWithSah(bvhPrimitives, bvhNodes, 0, (int)bvhPrimitives.size() - 1, 4);
-
-            // End time point in milliseconds and print
-            timer.Stop();
-            timer.Print();
-
-            // Align BVH nodes
-            std::vector<BVH::BvhNodeAlign> bvhNodesAligned;
-            for (const BVH::BvhNode& node : bvhNodes)
-            {
-                BVH::BvhNodeAlign nodeAligned{ };
-
-                nodeAligned.left = node.left;
-                nodeAligned.right = node.right;
-                nodeAligned.n = node.n;
-                nodeAligned.index = node.index;
-                nodeAligned.AA = node.AA;
-                nodeAligned.BB = node.BB;
-
-                // Add
-                bvhNodesAligned.push_back(nodeAligned);
-            }
-
-            // Convert to span
-            std::span<BVH::BvhNodeAlign> span = std::span(bvhNodesAligned);
-
-            // Allocate
-            m_ssboBvhNodes->AllocateData(span);
-            m_ssboBvhNodes->Unbind();
-        }
-
-        // Create SSBO for BVH primitives
-        {
-            // Create SSBO for BVH primitives
-            m_ssboBvhPrimitives = std::make_shared<ShaderStorageBufferObject>();
-            m_ssboBvhPrimitives->Bind();
-
-            // Binding index
-            glBindBufferBase(m_ssboBvhPrimitives->GetTarget(), 3, m_ssboBvhPrimitives->GetHandle()); // Binding index: 3
-
-            // Align BVH primitives
-            std::vector<BVH::BvhPrimitiveAlign> bvhPrimitivesAligned;
-            for (const BVH::BvhPrimitive& primitive : bvhPrimitives)
-            {
-                glm::vec3 posA = primitive.posA;
-                glm::vec3 posB = primitive.posB;
-                glm::vec3 posC = primitive.posC;
-
-                glm::vec3 norA = primitive.norA;
-                glm::vec3 norB = primitive.norB;
-                glm::vec3 norC = primitive.norC;
-
-                glm::vec2 uvA = primitive.uvA;
-                glm::vec2 uvB = primitive.uvB;
-                glm::vec2 uvC = primitive.uvC;
-
-                BVH::BvhPrimitiveAlign primitiveAligned{ };
-
-                primitiveAligned.posAuvX = glm::vec4(posA, uvA.x);
-                primitiveAligned.norAuvY = glm::vec4(norA, uvA.y);
-
-                primitiveAligned.posBuvX = glm::vec4(posB, uvB.x);
-                primitiveAligned.norBuvY = glm::vec4(norB, uvB.y);
-
-                primitiveAligned.posCuvX = glm::vec4(posC, uvC.x);
-                primitiveAligned.norCuvY = glm::vec4(norC, uvC.y);
-
-                primitiveAligned.meshIndex = primitive.meshIndex;
-
-                // Push
-                bvhPrimitivesAligned.push_back(primitiveAligned);
-            }
-
-            // Convert to span
-            std::span<BVH::BvhPrimitiveAlign> span = std::span(bvhPrimitivesAligned);
-
-            // Allocate
-            m_ssboBvhPrimitives->AllocateData(span);
-            m_ssboBvhPrimitives->Unbind();
+            bvhPrimitives.push_back(primitive);
         }
     }
+
+    // Environment allocation
+    ProcessEnvironmentBuffer();
+
+    // Material allocation
+    ProcessMaterialBuffer(totalMaterialData);
+
+    // Create SSBO for BVH nodes
+    ProcessBvhNodeBuffer(bvhPrimitives);
+
+    // Create SSBO for BVH primitives
+    ProcessBvhPrimitiveBuffer(bvhPrimitives);
+
+    std::cout << "Done processing buffers..." << std::endl;
 }
 
-void PathTracingRenderer::ClearBuffers()
+void PathTracingRenderer::ProcessEnvironmentBuffer()
 {
-    m_bindlessHandles.clear();
+    // Bind SSBO for environment
+    m_ssboEnvironment->Bind();
+
+    // Binding index
+    glBindBufferBase(m_ssboEnvironment->GetTarget(), 0, m_ssboEnvironment->GetHandle()); // Binding index: 0
+
+    // Get HDRI
+    std::shared_ptr<Texture2DObject> hdri = m_pathTracingApplication->GetHdri();
+
+    // Start timer
+    Timer timer("HDRI Cache");
+
+    // Calculate and save HDRI Cache
+    int hdriWidth, hdriHeight;
+    m_hdriCache = CalculateHdriCache(hdri, hdriWidth, hdriHeight);
+
+    // End time point in milliseconds and print
+    timer.Stop();
+    timer.Print();
+
+    // Get HDRI handle
+    const GLuint64 hdriHandle = hdri->GetBindlessTextureHandle();
+    if (hdriHandle == 0) { throw new std::runtime_error("Error! HDRI Handle returned null"); }
+    m_bindlessHandles.push_back(hdriHandle);
+
+    // Get HDRI Cache handle
+    const GLuint64 hdriCacheHandle = m_hdriCache->GetBindlessTextureHandle();
+    if (hdriCacheHandle == 0) { throw new std::runtime_error("Error! HDRI Cache Handle returned null"); }
+    m_bindlessHandles.push_back(hdriCacheHandle);
+
+    // Environment
+    EnvironmentAlign environment{ };
+    environment.hdriHandle = hdriHandle;
+    environment.hdriCacheHandle = hdriCacheHandle;
+    environment.hdriDimensions = glm::vec2(float(hdriWidth), float(hdriHeight));
+
+    // Convert to span
+    std::span<EnvironmentAlign> span = std::span(&environment, 1);
+
+    // Allocate
+    m_ssboEnvironment->AllocateData(span);
+    m_ssboEnvironment->Unbind();
+}
+
+void PathTracingRenderer::ProcessMaterialBuffer(std::vector<MaterialSave> totalMaterialData)
+{
+    // Bind SSBO for materials
+    m_ssboMaterials->Bind();
+
+    // Binding index
+    glBindBufferBase(m_ssboMaterials->GetTarget(), 1, m_ssboMaterials->GetHandle()); // Binding index: 1
+
+    // Convert to MaterialAlign for GPU consumption
+
+    std::vector<MaterialAlign> materialsAlign;
+    for (const MaterialSave& materialSave : totalMaterialData)
+    {
+        MaterialAlign materialAlign{ };
+
+        // Texture handles
+        materialAlign.emissionTextureHandle = materialSave.emissionTextureHandle;
+        materialAlign.albedoTextureHandle = materialSave.albedoTextureHandle;
+        materialAlign.normalTextureHandle = materialSave.normalTextureHandle;
+        materialAlign.specularTextureHandle = materialSave.specularTextureHandle;
+        materialAlign.specularColorTextureHandle = materialSave.specularColorTextureHandle;
+        materialAlign.metallicRoughnessTextureHandle = materialSave.metallicRoughnessTextureHandle;
+        materialAlign.sheenRoughnessTextureHandle = materialSave.sheenRoughnessTextureHandle;
+        materialAlign.sheenColorTextureHandle = materialSave.sheenColorTextureHandle;
+        materialAlign.clearcoatTextureHandle = materialSave.clearcoatTextureHandle;
+        materialAlign.clearcoatRoughnessTextureHandle = materialSave.clearcoatRoughnessTextureHandle;
+        materialAlign.transmissionTextureHandle = materialSave.transmissionTextureHandle;
+
+        // Attributes
+        materialAlign.emission = materialSave.emission;
+        materialAlign.albedo = materialSave.albedo;
+        materialAlign.specular = materialSave.specular;
+        materialAlign.specularTint = materialSave.specularTint;
+        materialAlign.metallic = materialSave.metallic;
+        materialAlign.roughness = materialSave.roughness;
+        materialAlign.subsurface = materialSave.subsurface;
+        materialAlign.anisotropy = materialSave.anisotropy;
+        materialAlign.sheenRoughness = materialSave.sheenRoughness;
+        materialAlign.sheenTint = materialSave.sheenTint;
+        materialAlign.clearcoat = materialSave.clearcoat;
+        materialAlign.clearcoatRoughness = materialSave.clearcoatRoughness;
+        materialAlign.refraction = materialSave.refraction;
+        materialAlign.transmission = materialSave.transmission;
+
+        // Push
+        materialsAlign.push_back(materialAlign);
+    }
+
+    // Convert to span
+    std::span<MaterialAlign> span = std::span(materialsAlign);
+
+    // Allocate
+    m_ssboMaterials->AllocateData(span);
+
+    m_ssboMaterials->Unbind();
+}
+
+void PathTracingRenderer::ProcessBvhNodeBuffer(std::vector<BVH::BvhPrimitive>& bvhPrimitives)
+{
+    // Bind SSBO for BVH nodes
+    m_ssboBvhNodes->Bind();
+
+    // Binding index
+    glBindBufferBase(m_ssboBvhNodes->GetTarget(), 2, m_ssboBvhNodes->GetHandle()); // Binding index: 2
+
+    // Initialize BVH nodes
+    BVH::BvhNode initNode{ };
+    std::vector<BVH::BvhNode> bvhNodes{ initNode };
+
+    // Start timer
+    Timer timer("BVH Calculation");
+
+    // Calculate BVH
+    // It modifies bvhPrimitives!
+    //BVH::BuildBvh(bvhPrimitives, bvhNodes, 0, (int)bvhPrimitives.size() - 1, 4);
+    BVH::BuildBvhWithSah(bvhPrimitives, bvhNodes, 0, (int)bvhPrimitives.size() - 1, 4);
+
+    // End time point in milliseconds and print
+    timer.Stop();
+    timer.Print();
+
+    // Align BVH nodes
+    std::vector<BVH::BvhNodeAlign> bvhNodesAligned;
+    for (const BVH::BvhNode& node : bvhNodes)
+    {
+        BVH::BvhNodeAlign nodeAligned{ };
+
+        nodeAligned.left = node.left;
+        nodeAligned.right = node.right;
+        nodeAligned.n = node.n;
+        nodeAligned.index = node.index;
+        nodeAligned.AA = node.AA;
+        nodeAligned.BB = node.BB;
+
+        // Add
+        bvhNodesAligned.push_back(nodeAligned);
+}
+
+    // Convert to span
+    std::span<BVH::BvhNodeAlign> span = std::span(bvhNodesAligned);
+
+    // Allocate
+    m_ssboBvhNodes->AllocateData(span);
+    m_ssboBvhNodes->Unbind();
+}
+
+void PathTracingRenderer::ProcessBvhPrimitiveBuffer(std::vector<BVH::BvhPrimitive> bvhPrimitives)
+{
+    // Bind SSBO for BVH primitives
+    m_ssboBvhPrimitives->Bind();
+
+    // Binding index
+    glBindBufferBase(m_ssboBvhPrimitives->GetTarget(), 3, m_ssboBvhPrimitives->GetHandle()); // Binding index: 3
+
+    // Align BVH primitives
+    std::vector<BVH::BvhPrimitiveAlign> bvhPrimitivesAligned;
+    for (const BVH::BvhPrimitive& primitive : bvhPrimitives)
+    {
+        glm::vec3 posA = primitive.posA;
+        glm::vec3 posB = primitive.posB;
+        glm::vec3 posC = primitive.posC;
+
+        glm::vec3 norA = primitive.norA;
+        glm::vec3 norB = primitive.norB;
+        glm::vec3 norC = primitive.norC;
+
+        glm::vec2 uvA = primitive.uvA;
+        glm::vec2 uvB = primitive.uvB;
+        glm::vec2 uvC = primitive.uvC;
+
+        BVH::BvhPrimitiveAlign primitiveAligned{ };
+
+        primitiveAligned.posAuvX = glm::vec4(posA, uvA.x);
+        primitiveAligned.norAuvY = glm::vec4(norA, uvA.y);
+
+        primitiveAligned.posBuvX = glm::vec4(posB, uvB.x);
+        primitiveAligned.norBuvY = glm::vec4(norB, uvB.y);
+
+        primitiveAligned.posCuvX = glm::vec4(posC, uvC.x);
+        primitiveAligned.norCuvY = glm::vec4(norC, uvC.y);
+
+        primitiveAligned.meshIndex = primitive.meshIndex;
+
+        // Push
+        bvhPrimitivesAligned.push_back(primitiveAligned);
+    }
+
+    // Convert to span
+    std::span<BVH::BvhPrimitiveAlign> span = std::span(bvhPrimitivesAligned);
+
+    // Allocate
+    m_ssboBvhPrimitives->AllocateData(span);
+    m_ssboBvhPrimitives->Unbind();
 }
 
 void PathTracingRenderer::PrintVBOData(VertexBufferObject& vbo, GLint vboSize)
@@ -865,6 +910,9 @@ std::shared_ptr<Texture2DObject> PathTracingRenderer::CalculateHdriCache(std::sh
     hdriCache->SetParameter(TextureObject::ParameterEnum::MinFilter, GL_LINEAR);
     hdriCache->SetParameter(TextureObject::ParameterEnum::MagFilter, GL_LINEAR);
     hdriCache->Unbind();
+
+    // Cleanup
+    delete[] cache;
 
     return hdriCache;
 }

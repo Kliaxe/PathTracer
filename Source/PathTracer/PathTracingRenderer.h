@@ -1,5 +1,7 @@
 #pragma once
 #include "Renderer/Renderer.h"
+#include "Geometry/Model.h"
+#include "BVH.h"
 
 class PathTracingApplication;
 class Material;
@@ -14,12 +16,12 @@ public:
 
 	void Initialize();
 
-	const int GetWidth()    const { return m_width; }
-	const int GetHeight()   const { return m_height; }
+	const int GetWidth()  const { return m_width; }
+	const int GetHeight() const { return m_height; }
 
-	const std::shared_ptr<Material> GetPathTracingMaterial()        const { return m_pathTracingMaterial; }
-	const std::shared_ptr<Material> GetPathTracingCopyMaterial()    const { return m_pathTracingCopyMaterial; }
-	const std::shared_ptr<Material> GetToneMappingMaterial()        const { return m_toneMappingMaterial; }
+	const std::shared_ptr<Material> GetPathTracingMaterial()     const { return m_pathTracingMaterial; }
+	const std::shared_ptr<Material> GetPathTracingCopyMaterial() const { return m_pathTracingCopyMaterial; }
+	const std::shared_ptr<Material> GetToneMappingMaterial()     const { return m_toneMappingMaterial; }
 
     const std::shared_ptr<ShaderStorageBufferObject> GetSsboEnvironment()   const { return m_ssboEnvironment; }
     const std::shared_ptr<ShaderStorageBufferObject> GetSsboMaterials()     const { return m_ssboMaterials; }
@@ -32,12 +34,34 @@ private:
 	void InitializeFramebuffer();
 	void InitializeMaterial();
 	void InitializeRenderPasses();
+    void InitializeBuffers();
 
 	std::shared_ptr<Material> CreatePathTracingMaterial();
 	std::shared_ptr<Material> CreatePostFXMaterial(const char* fragmentShaderPath);
     
-    void CreateBuffers();
-    void ClearBuffers();
+private:
+    // Model representation for path tracing
+    struct PathTracingModel;
+
+    // Intermediate data translation to buffer structs
+    struct VertexSave;
+    struct MaterialSave;
+
+    // Buffer structs that are aligned to 16 bytes
+    struct alignas(16) EnvironmentAlign;
+    struct alignas(16) MaterialAlign;
+
+public:
+    void ClearPathTracingTexture();
+
+    void AddPathTracingModel(const Model& model, const glm::mat4& worldMatrix);
+    void ClearPathTracingModels();
+
+    void ProcessBuffers();
+    void ProcessEnvironmentBuffer();
+    void ProcessMaterialBuffer(std::vector<MaterialSave> totalMaterialData);
+    void ProcessBvhNodeBuffer(std::vector<BVH::BvhPrimitive>& bvhPrimitives);
+    void ProcessBvhPrimitiveBuffer(std::vector<BVH::BvhPrimitive> bvhPrimitives);
 
 private:
 	void PrintVBOData(VertexBufferObject& vbo, GLint vboSize);
@@ -54,22 +78,16 @@ private:
 	std::shared_ptr<Texture2DObject> CalculateHdriCache(std::shared_ptr<Texture2DObject> hdri, int& width, int& height);
 
 private:
-    // Intermediate data translation to buffer structs
-    struct VertexSave;
-	struct MaterialSave;
-
-    // Buffer structs that are aligned to 16 bytes
-    struct alignas(16) EnvironmentAlign;
-	struct alignas(16) MaterialAlign;
-
-private:
 	int m_width;
 	int m_height;
 	PathTracingApplication* m_pathTracingApplication;
 
+    // Path tracing models
+    std::vector<PathTracingModel> m_pathTracingModels;
+
 	// Framebuffer
-	std::shared_ptr<Texture2DObject>    m_pathTracingTexture;
-	std::shared_ptr<FramebufferObject>  m_pathTracingFramebuffer;
+	std::shared_ptr<Texture2DObject>   m_pathTracingTexture;
+	std::shared_ptr<FramebufferObject> m_pathTracingFramebuffer;
 
 	// Materials
 	std::shared_ptr<Material> m_pathTracingMaterial;
@@ -88,6 +106,12 @@ private:
 	std::shared_ptr<ShaderStorageBufferObject> m_ssboMaterials;
 	std::shared_ptr<ShaderStorageBufferObject> m_ssboBvhNodes;
 	std::shared_ptr<ShaderStorageBufferObject> m_ssboBvhPrimitives;
+};
+
+struct PathTracingRenderer::PathTracingModel
+{
+    Model model;
+    glm::mat4 worldMatrix;
 };
 
 struct PathTracingRenderer::VertexSave

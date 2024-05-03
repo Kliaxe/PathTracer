@@ -94,6 +94,9 @@ public:
     // Retrieve pixel data from the texture buffer
     void GetTextureData(GLint level, Format format, Data::Type type, void* pixels) const;
 
+    // Clear the texture with a specific color
+    void ClearTexture(GLint level, Format format, Data::Type type, const void* clearColor);
+
 protected:
     // Bind the specific target. Used by the Bind() method in derived classes
     void Bind(Target target) const;

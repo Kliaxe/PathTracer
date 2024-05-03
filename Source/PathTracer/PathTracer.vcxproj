@@ -178,12 +178,14 @@ xcopy /s /d "$(ProjectDir)Content" "$(OutDir)Content\"</Command>
     <ClCompile Include="PathTracingRenderer.cpp" />
     <ClCompile Include="PathTracingRenderPass.cpp" />
     <ClCompile Include="PathTracingApplication.cpp" />
+    <ClCompile Include="PathTracingRendererSceneVisitor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BVH.h" />
     <ClInclude Include="PathTracingRenderer.h" />
     <ClInclude Include="PathTracingRenderPass.h" />
     <ClInclude Include="PathTracingApplication.h" />
+    <ClInclude Include="PathTracingRendererSceneVisitor.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\blinn-phong.frag" />
