@@ -230,8 +230,7 @@ void PathTracingApplication::InitializeCamera()
 {
     // Create the main camera
     std::shared_ptr<Camera> camera = std::make_shared<Camera>();
-    //camera->SetViewMatrix(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0));
-    camera->SetViewMatrix(glm::vec3(-7.5f, 5.0f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0));
+    camera->SetViewMatrix(glm::vec3(-2.5f, 1.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0));
     float fov = 1.57f;
     camera->SetPerspectiveProjectionMatrix(fov, GetMainWindow().GetAspectRatio(), 0.01f, 1000.0f);
 
