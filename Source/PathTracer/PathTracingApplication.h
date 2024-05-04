@@ -12,6 +12,7 @@ class Camera;
 class Texture2DObject;
 class ModelLoader;
 class PathTracingRenderer;
+class Renderer;
 
 class PathTracingApplication : public Application
 {
@@ -38,23 +39,48 @@ private:
 private:
     enum PathTracingHdri
     {
+        AutumnField,
+        Black,
         BrownPhotostudio,
         ChineseGarden,
+        EveningRoad,
         Meadow,
         SymmetricalGarden,
     };
     
     enum PathTracingScene
     {
-        TestScene1,
-        TestScene2,
+        AreaLight,
+        Fireplace,
+        Mill,
+        Sponza,
+        SponzaReduced,
+        BunnyDielectric,
+        BunnyMetallic,
+        BunnyGlass,
+        BunnyClearcoat,
+        DragonDielectric,
+        DragonMetallic,
+        DragonGlass,
+        DragonClearcoat,
     };
 
     void ProcessHdri(bool processEnvironmentBuffer);
 
     void ProcessScene();
-    Scene LoadTestScene1();
-    Scene LoadTestScene2();
+    Scene LoadAreaLightScene();
+    Scene LoadFireplaceScene();
+    Scene LoadMillScene();
+    Scene LoadSponzaScene();
+    Scene LoadSponzaReducedScene();
+    Scene LoadBunnyDielectricScene();
+    Scene LoadBunnyMetallicScene();
+    Scene LoadBunnyGlassScene();
+    Scene LoadBunnyClearcoatScene();
+    Scene LoadDragonDielectricScene();
+    Scene LoadDragonMetallicScene();
+    Scene LoadDragonGlassScene();
+    Scene LoadDragonClearcoatScene();
 
 public:
     const bool GetShouldPathTrace() const { return m_shouldPathTrace; }
@@ -80,7 +106,7 @@ private:
 
     // Configuration
     unsigned int m_maxFrameCount = 50;          // Total rendered amount of frames
-    bool m_shouldRasterizeAsPreview = false;    // If this is enabled, we would render the models in rasterization instead of raytracing for scene invalidation (when camera is enabled)
+    //bool m_shouldRasterizeAsPreview = false;    // If this is enabled, we would render the models in rasterization instead of raytracing for scene invalidation (when camera is enabled)
     bool m_denoiserEnabled = false;             // Denoiser enabled for the rendered image
 
     // Settings
@@ -115,7 +141,7 @@ private:
 
     // Current chosen data
     PathTracingHdri m_currentPathTracingHdri = PathTracingHdri::BrownPhotostudio;
-    PathTracingScene m_currentPathTracingScene = PathTracingScene::TestScene1;
+    PathTracingScene m_currentPathTracingScene = PathTracingScene::BunnyDielectric;
 
     // Camera controller
     CameraController m_cameraController;
@@ -126,6 +152,7 @@ private:
     // Model loader
     std::shared_ptr<ModelLoader> m_modelLoader;
 
-    // PathTracing Renderer
+    // Renderers
     std::shared_ptr<PathTracingRenderer> m_pathTracingRenderer;
+    //std::shared_ptr<Renderer> m_rasterizationRenderer;
 };

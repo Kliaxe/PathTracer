@@ -24,6 +24,7 @@
 #include <iostream>
 #include "PathTracingRenderer.h"
 #include "PathTracingRendererSceneVisitor.h"
+#include "Scene/RendererSceneVisitor.h"
 
 PathTracingApplication::PathTracingApplication() : Application(1024, 1024, "PathTracer")
 {
@@ -45,6 +46,9 @@ PathTracingApplication::PathTracingApplication() : Application(1024, 1024, "Path
 
     // Create PathTracing Renderer
     m_pathTracingRenderer = std::make_shared<PathTracingRenderer>(width, height, this, GetDevice());
+
+    // Create Rasterization Renderer
+    //m_rasterizationRenderer = std::make_shared<Renderer>(GetDevice());
 }
 
 void PathTracingApplication::Initialize()
@@ -89,15 +93,31 @@ void PathTracingApplication::Update()
     // Update camera controller
     m_cameraController.Update(GetMainWindow(), GetDeltaTime());
 
+    //// When moving the camera
+    //if (m_cameraController.IsEnabled())
+    //{
+    //    // If rasterization has been enabled refresh
+    //    if (m_shouldRasterizeAsPreview)
+    //    {
+    //        RefreshScene();
+    //    }
+    //    else // Else invalidate accumulation
+    //    {
+    //        InvalidateScene();
+    //    }
+    //}
+
     // Invalidate accumulation when moving the camera
     if (m_cameraController.IsEnabled())
     {
         InvalidateScene();
     }
 
-    // Set PathTracing Renderer camera
     const Camera& camera = *m_cameraController.GetCamera()->GetCamera();
+
+    // Set Renderer camera
     m_pathTracingRenderer->SetCurrentCamera(camera);
+    //m_rasterizationRenderer->SetCurrentCamera(camera);
 
     // Update materials
     UpdateMaterial(camera, width, height);
@@ -109,20 +129,20 @@ void PathTracingApplication::Render()
 
     GetDevice().Clear(true, Color(0.0f, 0.0f, 0.0f, 1.0f), true, 1.0f);
 
-    // Render the scene
-    if (m_shouldRasterizeAsPreview && m_cameraController.IsEnabled())
-    {
-        // Using traditional rasterization
-        //for (const Model& model : (SceneModel)m_currentScene.GetSceneNodes())
-        //{
-        //    model.Draw();
-        //}
-    }
-    else
-    {
-        // Using path trace renderer
-        m_pathTracingRenderer->Render();
-    }
+    //// Render the scene
+    //if (m_shouldRasterizeAsPreview && m_cameraController.IsEnabled())
+    //{
+    //    // Using traditional rasterization renderer
+    //    m_rasterizationRenderer->Render();
+    //}
+    //else
+    //{
+    //    // Using pathtracing renderer
+    //    m_pathTracingRenderer->Render();
+    //}
+
+    // Render the scene using pathtracing renderer
+    m_pathTracingRenderer->Render();
 
     // Render the debug user interface
     RenderGUI();
@@ -196,79 +216,14 @@ void PathTracingApplication::InitializeLoader()
     m_modelLoader->SetSemanticAttribute(VertexAttribute::Semantic::Normal);
     m_modelLoader->SetSemanticAttribute(VertexAttribute::Semantic::TexCoord0);
 
-    // Material Arributes for rasterizer
+    // Material Arributes for rasterization
     m_modelLoader->SetMaterialAttribute(VertexAttribute::Semantic::Position, "VertexPosition");
     m_modelLoader->SetMaterialAttribute(VertexAttribute::Semantic::Normal, "VertexNormal");
     m_modelLoader->SetMaterialAttribute(VertexAttribute::Semantic::TexCoord0, "VertexTexCoord");
 
-    // Material Properties for rasterizer
+    // Material Properties for rasterization
     m_modelLoader->SetMaterialProperty(ModelLoader::MaterialProperty::DiffuseTexture, "DiffuseTexture");
     m_modelLoader->SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
-
-    // Load models
-    //m_models.push_back(loader.Load("Content/Models/BrickCubes/BrickCubes.gltf"));
-    //m_models.push_back(loader.Load("Content/Models/Mill/Mill.gltf"));
-    //m_models.push_back(loader.Load("Content/Models/Sponza/Sponza.gltf"));
-    //m_models.push_back(loader.Load("Content/Models/Bunny.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Circle.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Cone.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Cube.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Dragon.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Floor.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Icosphere.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Plane.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Sphere.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Teapot.glb"));
-    //m_models.push_back(loader.Load("Content/Models/Torus.glb"));
-
-#if 0
-    {
-        // Specify material attributes
-        Material::MaterialAttributes floorMaterialAttributes{ };
-        floorMaterialAttributes.albedo = glm::vec3(1.0f, 1.0f, 1.0f) * 0.7f;
-        floorMaterialAttributes.metallic = 1.0f;
-        floorMaterialAttributes.roughness = 0.2f;
-
-        Model floorModel = loader.Load("Content/Models/Floor.glb");
-        
-        // Set material attributes
-        std::shared_ptr<Material> floorMaterial = std::make_shared<Material>(floorModel.GetMaterial(0));
-        floorMaterial->SetMaterialAttributes(floorMaterialAttributes);
-        floorModel.SetMaterial(0, floorMaterial);
-
-        m_models.push_back(floorModel);
-    }
-    {
-        // Specify material attributes
-        Material::MaterialAttributes bunnyMaterialAttributes{ };
-        //bunnyMaterialAttributes.emission = glm::vec3(1.0f, 0.73f, 0.05f) * 10.0f;
-        //bunnyMaterialAttributes.albedo = glm::vec3(0.4f, 1.0f, 0.0f) * 0.8f;
-        bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.8f;
-        //bunnyMaterialAttributes.albedo = glm::vec3(0.6f, 0.0f, 1.0f) * 0.8f;
-        //bunnyMaterialAttributes.specular = 0.05f;
-        //bunnyMaterialAttributes.metallic = 1.0f;
-        bunnyMaterialAttributes.roughness = 0.05f;
-        //bunnyMaterialAttributes.sheenRoughness = 1.0f;
-        //bunnyMaterialAttributes.sheenTint = 1.0f;
-        //bunnyMaterialAttributes.clearcoat = 1.0f;
-        //bunnyMaterialAttributes.clearcoatRoughness = 0.01f;
-        //bunnyMaterialAttributes.subsurface = 2.0f;
-        //bunnyMaterialAttributes.transmission = 1.0f;
-        //bunnyMaterialAttributes.refraction = 1.5f;
-
-        Model bunnyModel = loader.Load("Content/Models/Bunny.glb");
-        //Model bunnyModel = loader.Load("Content/Models/Cone.glb");
-        //Model bunnyModel = loader.Load("Content/Models/Dragon.glb");
-        //Model bunnyModel = loader.Load("Content/Models/Sphere.glb");
-
-        // Set material attributes
-        std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(bunnyModel.GetMaterial(0));
-        bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
-        bunnyModel.SetMaterial(0, bunnyMaterial);
-
-        m_models.push_back(bunnyModel);
-    }
-#endif
 }
 
 void PathTracingApplication::InitializeCamera()
@@ -364,16 +319,23 @@ void PathTracingApplication::RenderGUI()
         ImGui::Separator();
         ImGui::Spacing();
 
-        invalidate |= ImGui::InputInt("Max Frame Count", (int*)(&m_maxFrameCount));
-                      ImGui::Checkbox("Denoiser Enabled", (bool*)(&m_denoiserEnabled));
+        if (ImGui::InputInt("Max Frame Count", (int*)(&m_maxFrameCount)))
+        {
+            // We wouldn't want to invalidate the scene, if we set the max frame count to something lower than what has already been achieved
+            if (m_frameCount < m_maxFrameCount)
+            {
+                invalidate = true;
+            }
+        }
+        ImGui::Checkbox("Denoiser Enabled", (bool*)(&m_denoiserEnabled));
         invalidate |= ImGui::Button("Invalidate Scene");
-        invalidate |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
+        //refresh |= ImGui::Checkbox("Use Rasterization as Preview", (bool*)(&m_shouldRasterizeAsPreview));
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
-        const char* hdriItems[] = { "Photostudio", "Chinese Garden", "Meadow", "Symmetrical Garden"};
+        const char* hdriItems[] = { "Autumn Field", "Black", "Brown Photostudio", "Chinese Garden", "Evening Road", "Meadow", "Symmetrical Garden"};
         int currentHdriItem = static_cast<int>(m_currentPathTracingHdri);
 
         if (ImGui::Combo("Select HDRI", &currentHdriItem, hdriItems, IM_ARRAYSIZE(hdriItems)))
@@ -384,7 +346,7 @@ void PathTracingApplication::RenderGUI()
             refresh = true;
         }
 
-        const char* sceneItems[] = { "Test Scene 1", "TestScene 2" };
+        const char* sceneItems[] = { "Area Light", "Fireplace", "Mill", "Sponza", "Sponza Reduced", "Bunny Dielectric", "Bunny Metallic", "Bunny Glass", "Bunny Clearcoat", "Dragon Dielectric", "Dragon Metallic", "Dragon Glass", "Dragon Clearcoat" };
         int currentSceneItem = static_cast<int>(m_currentPathTracingScene);
 
         if (ImGui::Combo("Select Scene", &currentSceneItem, sceneItems, IM_ARRAYSIZE(sceneItems)))
@@ -400,7 +362,7 @@ void PathTracingApplication::RenderGUI()
         ImGui::Spacing();
 
         invalidate |= ImGui::Checkbox("Anti-Aliasing", (bool*)(&m_AntiAliasingEnabled));
-        ImGui::SliderFloat("Exposure", (float*)(&m_exposure), 0.0f, 5.0f);
+        ImGui::SliderFloat("Exposure", (float*)(&m_exposure), 0.0f, 10.0f);
 
         ImGui::Spacing();
 
@@ -445,11 +407,20 @@ void PathTracingApplication::ProcessHdri(bool processEnvironmentBuffer)
 {
     switch (m_currentPathTracingHdri)
     {
+    case PathTracingHdri::AutumnField:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/AutumnField.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
+    case PathTracingHdri::Black:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/Black.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
     case PathTracingHdri::BrownPhotostudio:
         m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/BrownPhotostudio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
         break;
     case PathTracingHdri::ChineseGarden:
         m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/ChineseGarden.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
+        break;
+    case PathTracingHdri::EveningRoad:
+        m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/EveningRoad.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
         break;
     case PathTracingHdri::Meadow:
         m_hdri = Texture2DLoader::LoadTextureShared("Content/HDRI/Meadow.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB32F);
@@ -477,27 +448,112 @@ void PathTracingApplication::ProcessScene()
     Scene scene;
     switch (m_currentPathTracingScene)
     {
-    case PathTracingScene::TestScene1:
-        scene = LoadTestScene1();
+    case PathTracingScene::AreaLight:
+        scene = LoadAreaLightScene();
         break;
-    case PathTracingScene::TestScene2:
-        scene = LoadTestScene2();
+    case PathTracingScene::Fireplace:
+        scene = LoadFireplaceScene();
+        break;
+    case PathTracingScene::Mill:
+        scene = LoadMillScene();
+        break;
+    case PathTracingScene::Sponza:
+        scene = LoadSponzaScene();
+        break;
+    case PathTracingScene::SponzaReduced:
+        scene = LoadSponzaReducedScene();
+        break;
+    case PathTracingScene::BunnyDielectric:
+        scene = LoadBunnyDielectricScene();
+        break;
+    case PathTracingScene::BunnyMetallic:
+        scene = LoadBunnyMetallicScene();
+        break;
+    case PathTracingScene::BunnyGlass:
+        scene = LoadBunnyGlassScene();
+        break;
+    case PathTracingScene::BunnyClearcoat:
+        scene = LoadBunnyClearcoatScene();
+        break;
+    case PathTracingScene::DragonDielectric:
+        scene = LoadDragonDielectricScene();
+        break;
+    case PathTracingScene::DragonMetallic:
+        scene = LoadDragonMetallicScene();
+        break;
+    case PathTracingScene::DragonGlass:
+        scene = LoadDragonGlassScene();
+        break;
+    case PathTracingScene::DragonClearcoat:
+        scene = LoadDragonClearcoatScene();
         break;
     default:
         throw std::runtime_error("No such Path Tracing scene...");
     };
 
-    // Add the scene nodes to the renderer
+    // Add the scene nodes to the pathtracing renderer
     PathTracingRendererSceneVisitor pathTracingRendererSceneVisitor(m_pathTracingRenderer);
     scene.AcceptVisitor(pathTracingRendererSceneVisitor);
 
+    // Add the scene nodes to the rasterization renderer
+    //RendererSceneVisitor rasterizationRendererSceneVisitor(m_rasterizationRenderer);
+    //scene.AcceptVisitor(rasterizationRendererSceneVisitor);
+
     // Process buffers by renderer using the given models
     m_pathTracingRenderer->ProcessBuffers();
-
-    int test = 0;
 }
 
-Scene PathTracingApplication::LoadTestScene1()
+Scene PathTracingApplication::LoadAreaLightScene()
+{
+    std::shared_ptr<Model> areaLightModel = m_modelLoader->LoadShared("Content/Models/AreaLight/AreaLight.gltf");
+
+    Scene areaLightScene;
+    areaLightScene.AddSceneNode(std::make_shared<SceneModel>("areaLight", areaLightModel));
+
+    return areaLightScene;
+}
+
+Scene PathTracingApplication::LoadFireplaceScene()
+{
+    std::shared_ptr<Model> fireplaceModel = m_modelLoader->LoadShared("Content/Models/Fireplace/Fireplace.gltf");
+
+    Scene fireplaceScene;
+    fireplaceScene.AddSceneNode(std::make_shared<SceneModel>("fireplace", fireplaceModel));
+
+    return fireplaceScene;
+}
+
+Scene PathTracingApplication::LoadMillScene()
+{
+    std::shared_ptr<Model> millModel = m_modelLoader->LoadShared("Content/Models/Mill/Mill.gltf");
+
+    Scene millScene;
+    millScene.AddSceneNode(std::make_shared<SceneModel>("mill", millModel));
+
+    return millScene;
+}
+
+Scene PathTracingApplication::LoadSponzaScene()
+{
+    std::shared_ptr<Model> sponzaModel = m_modelLoader->LoadShared("Content/Models/Sponza/Sponza.gltf");
+
+    Scene sponzaScene;
+    sponzaScene.AddSceneNode(std::make_shared<SceneModel>("sponza", sponzaModel));
+
+    return sponzaScene;
+}
+
+Scene PathTracingApplication::LoadSponzaReducedScene()
+{
+    std::shared_ptr<Model> sponzaReducedModel = m_modelLoader->LoadShared("Content/Models/Sponza/SponzaReduced.gltf");
+
+    Scene sponzaReducedScene;
+    sponzaReducedScene.AddSceneNode(std::make_shared<SceneModel>("sponzaReduced", sponzaReducedModel));
+
+    return sponzaReducedScene;
+}
+
+Scene PathTracingApplication::LoadBunnyDielectricScene()
 {
     std::shared_ptr<Model> bunnyModel = m_modelLoader->LoadShared("Content/Models/Bunny.glb");
     std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
@@ -519,14 +575,166 @@ Scene PathTracingApplication::LoadTestScene1()
     return testScene1;
 }
 
-Scene PathTracingApplication::LoadTestScene2()
+Scene PathTracingApplication::LoadBunnyMetallicScene()
+{
+    std::shared_ptr<Model> bunnyModel = m_modelLoader->LoadShared("Content/Models/Bunny.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes bunnyMaterialAttributes{ };
+    bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.8f;
+    bunnyMaterialAttributes.metallic = 1.0f;
+    bunnyMaterialAttributes.roughness = 0.05f;
+
+    // Set material attributes
+    std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(bunnyModel->GetMaterial(0));
+    bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
+    bunnyModel->SetMaterial(0, bunnyMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("bunny", bunnyModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadBunnyGlassScene()
+{
+    std::shared_ptr<Model> bunnyModel = m_modelLoader->LoadShared("Content/Models/Bunny.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes bunnyMaterialAttributes{ };
+    bunnyMaterialAttributes.albedo = glm::vec3(1.0f, 0.15f, 0.0f) * 0.8f;
+    bunnyMaterialAttributes.roughness = 0.05f;
+    bunnyMaterialAttributes.transmission = 1.0f;
+
+    // Set material attributes
+    std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(bunnyModel->GetMaterial(0));
+    bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
+    bunnyModel->SetMaterial(0, bunnyMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("bunny", bunnyModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadBunnyClearcoatScene()
+{
+    std::shared_ptr<Model> bunnyModel = m_modelLoader->LoadShared("Content/Models/Bunny.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes bunnyMaterialAttributes{ };
+    bunnyMaterialAttributes.albedo = glm::vec3(0.0f, 0.4f, 1.0f) * 0.8f;
+    bunnyMaterialAttributes.metallic = 1.0f;
+    bunnyMaterialAttributes.roughness = 0.8f;
+    bunnyMaterialAttributes.clearcoat = 1.0f;
+    bunnyMaterialAttributes.clearcoatRoughness = 0.01f;
+
+    // Set material attributes
+    std::shared_ptr<Material> bunnyMaterial = std::make_shared<Material>(bunnyModel->GetMaterial(0));
+    bunnyMaterial->SetMaterialAttributes(bunnyMaterialAttributes);
+    bunnyModel->SetMaterial(0, bunnyMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("bunny", bunnyModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadDragonDielectricScene()
 {
     std::shared_ptr<Model> dragonModel = m_modelLoader->LoadShared("Content/Models/Dragon.glb");
     std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
 
-    Scene testScene2;
-    testScene2.AddSceneNode(std::make_shared<SceneModel>("dragon", dragonModel));
-    testScene2.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+    // Specify material attributes
+    Material::MaterialAttributes dragonMaterialAttributes{ };
+    dragonMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.8f;
+    dragonMaterialAttributes.roughness = 0.05f;
 
-    return testScene2;
+    // Set material attributes
+    std::shared_ptr<Material> dragonMaterial = std::make_shared<Material>(dragonModel->GetMaterial(0));
+    dragonMaterial->SetMaterialAttributes(dragonMaterialAttributes);
+    dragonModel->SetMaterial(0, dragonMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("dragon", dragonModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadDragonMetallicScene()
+{
+    std::shared_ptr<Model> dragonModel = m_modelLoader->LoadShared("Content/Models/Dragon.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes dragonMaterialAttributes{ };
+    dragonMaterialAttributes.albedo = glm::vec3(1.0f, 0.73f, 0.05f) * 0.8f;
+    dragonMaterialAttributes.metallic = 1.0f;
+    dragonMaterialAttributes.roughness = 0.05f;
+
+    // Set material attributes
+    std::shared_ptr<Material> dragonMaterial = std::make_shared<Material>(dragonModel->GetMaterial(0));
+    dragonMaterial->SetMaterialAttributes(dragonMaterialAttributes);
+    dragonModel->SetMaterial(0, dragonMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("dragon", dragonModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadDragonGlassScene()
+{
+    std::shared_ptr<Model> dragonModel = m_modelLoader->LoadShared("Content/Models/Dragon.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes dragonMaterialAttributes{ };
+    dragonMaterialAttributes.albedo = glm::vec3(1.0f, 0.15f, 0.0f) * 0.8f;
+    dragonMaterialAttributes.roughness = 0.05f;
+    dragonMaterialAttributes.transmission = 1.0f;
+
+    // Set material attributes
+    std::shared_ptr<Material> dragonMaterial = std::make_shared<Material>(dragonModel->GetMaterial(0));
+    dragonMaterial->SetMaterialAttributes(dragonMaterialAttributes);
+    dragonModel->SetMaterial(0, dragonMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("dragon", dragonModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
+}
+
+Scene PathTracingApplication::LoadDragonClearcoatScene()
+{
+    std::shared_ptr<Model> dragonModel = m_modelLoader->LoadShared("Content/Models/Dragon.glb");
+    std::shared_ptr<Model> floorModel = m_modelLoader->LoadShared("Content/Models/Floor.glb");
+
+    // Specify material attributes
+    Material::MaterialAttributes dragonMaterialAttributes{ };
+    dragonMaterialAttributes.albedo = glm::vec3(0.0f, 0.4f, 1.0f) * 0.8f;
+    dragonMaterialAttributes.metallic = 1.0f;
+    dragonMaterialAttributes.roughness = 0.8f;
+    dragonMaterialAttributes.clearcoat = 1.0f;
+    dragonMaterialAttributes.clearcoatRoughness = 0.01f;
+
+    // Set material attributes
+    std::shared_ptr<Material> dragonMaterial = std::make_shared<Material>(dragonModel->GetMaterial(0));
+    dragonMaterial->SetMaterialAttributes(dragonMaterialAttributes);
+    dragonModel->SetMaterial(0, dragonMaterial);
+
+    Scene testScene1;
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("dragon", dragonModel));
+    testScene1.AddSceneNode(std::make_shared<SceneModel>("floor", floorModel));
+
+    return testScene1;
 }

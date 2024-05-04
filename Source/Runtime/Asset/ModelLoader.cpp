@@ -240,6 +240,9 @@ std::shared_ptr<Material> ModelLoader::GenerateMaterial(const aiMaterial& materi
     // Emission
     if (materialData.Get(AI_MATKEY_COLOR_EMISSIVE, color) == aiReturn_SUCCESS) { materialAttributes.emission = glm::vec3(color.r, color.g, color.b); }
 
+    // Emission Strength
+    if (materialData.Get(AI_MATKEY_EMISSIVE_INTENSITY, value) == aiReturn_SUCCESS) { materialAttributes.emission *= value; }
+
     // Albedo
     if (materialData.Get(AI_MATKEY_BASE_COLOR, color) == aiReturn_SUCCESS) { materialAttributes.albedo = glm::vec3(color.r, color.g, color.b); }
     

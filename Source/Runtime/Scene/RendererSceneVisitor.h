@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceneVisitor.h"
+#include <memory>
 
 class Renderer;
 class SceneCamera;
@@ -11,7 +12,7 @@ class Transform;
 class RendererSceneVisitor : public SceneVisitor
 {
 public:
-    RendererSceneVisitor(Renderer& renderer);
+    RendererSceneVisitor(std::shared_ptr<Renderer> renderer);
 
     void VisitCamera(SceneCamera& sceneCamera) override;
 
@@ -20,5 +21,5 @@ public:
     void VisitModel(SceneModel& sceneModel) override;
 
 private:
-    Renderer& m_renderer;
+    std::shared_ptr<Renderer> m_renderer;
 };
