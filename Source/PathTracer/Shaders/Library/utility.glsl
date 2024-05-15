@@ -215,8 +215,9 @@ BrdfData PrepareEvaluationBrdfData(Material material, vec3 V, vec3 N, vec3 L)
 	data.alphaSquaredClearcoat = data.alphaClearcoat * data.alphaClearcoat;
 
 	// Kulla 2017, "Revisiting Physically Based Shading at Imageworks"
-	data.alphaAnisotropicX = max(0.002025f, data.alpha * (1.0f + material.anisotropy));
-	data.alphaAnisotropicY = max(0.002025f, data.alpha * (1.0f - material.anisotropy));
+	float aspect = sqrt(1.0f - 0.9f * material.anisotropy);
+	data.alphaAnisotropicX = max(0.002025f, data.alpha / aspect);
+	data.alphaAnisotropicY = max(0.002025f, data.alpha * aspect);
 
 	// Evaluate VNLHXY vectors
 	data.V = V;

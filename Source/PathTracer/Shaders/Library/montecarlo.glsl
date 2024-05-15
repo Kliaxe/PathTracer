@@ -38,7 +38,7 @@ vec3 RandomValueVec3(inout uint state)
 
 // Point on hemisphere with uniform distribution
 //	u, v : in range [0, 1]
-// PDF = 1 / (4 * PI)
+// PDF = 1 / (2 * PI)
 vec3 HemispherepointUniform(float u, float v)
 {
 	float phi = v * TWO_PI;
@@ -49,7 +49,7 @@ vec3 HemispherepointUniform(float u, float v)
 
 // Point on hemisphere with cosine-weighted distribution
 //	u, v : in range [0, 1]
-// PDF = NdotL / PI
+// PDF = NoL / PI
 vec3 HemispherepointCos(float u, float v)
 {
 	float phi = v * TWO_PI;

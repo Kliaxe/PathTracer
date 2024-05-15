@@ -35,7 +35,7 @@ float D_Charlie(float roughness, float NdotH)
 	float invR = 1.0f / roughness;
 	float cos2h = NdotH * NdotH;
 	float sin2h = 1.0f - cos2h;
-	return (2.0f + invR) * pow(sin2h, invR * 0.5f) / ONE_OVER_TWO_PI;
+	return (2.0f + invR) * pow(sin2h, invR * 0.5f) * ONE_OVER_TWO_PI;
 }
 
 // Smith's visibility function for isotropic surfaces
