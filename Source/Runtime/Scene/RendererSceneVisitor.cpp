@@ -12,7 +12,7 @@ RendererSceneVisitor::RendererSceneVisitor(std::shared_ptr<Renderer> renderer) :
 
 void RendererSceneVisitor::VisitCamera(SceneCamera& sceneCamera)
 {
-    assert(!m_renderer.HasCamera()); // Currently, only one camera per scene supported
+    assert(!m_renderer->HasCamera()); // Currently, only one camera per scene supported
     m_renderer->SetCurrentCamera(*sceneCamera.GetCamera());
 }
 

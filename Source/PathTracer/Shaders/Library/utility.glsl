@@ -66,7 +66,7 @@ float Luminance(vec3 rgb)
 //    Material evaluation
 // -------------------------------------------------------------------------
 
-vec3 SampleNormalMap(sampler2D normalTexture, HitInfo hitInfo)
+vec3 SampleNormalMap(uint64_t normalTextureHandle, HitInfo hitInfo)
 {
 	// By sampling normal maps, uvs should are available to calculate tangent
 	vec3 N = hitInfo.shadingNormal;
@@ -82,7 +82,7 @@ vec3 SampleNormalMap(sampler2D normalTexture, HitInfo hitInfo)
 	mat3 TBN = mat3(T, B, N);
 
 	// Sample normal texture
-	vec3 normalMap = texture(normalTexture, hitInfo.uv).rgb;
+	vec3 normalMap = SampleBindlessTexture(normalTextureHandle, hitInfo.uv).rgb;
 
 	// Transform normal vector to range [-1,1]
 	normalMap = normalize(normalMap * 2.0 - 1.0);
@@ -97,57 +97,57 @@ Material EvaluateMaterial(Material material, inout HitInfo hitInfo)
 
 	if (material.emissionTextureHandle != 0)
 	{
-		vec3 emissionSample = texture(sampler2D(material.emissionTextureHandle), hitInfo.uv).rgb;
+		vec3 emissionSample = SampleBindlessTexture(material.emissionTextureHandle, hitInfo.uv).rgb;
 		evaluatedMaterial.emission *= emissionSample;
 	}
 	if (material.albedoTextureHandle != 0)
 	{
-		vec3 albedoSample = texture(sampler2D(material.albedoTextureHandle), hitInfo.uv).rgb;
+		vec3 albedoSample = SampleBindlessTexture(material.albedoTextureHandle, hitInfo.uv).rgb;
 		evaluatedMaterial.albedo *= albedoSample;
 	}
 	if (material.normalTextureHandle != 0)
 	{
-		hitInfo.shadingNormal = SampleNormalMap(sampler2D(material.normalTextureHandle), hitInfo);
+		hitInfo.shadingNormal = SampleNormalMap(material.normalTextureHandle, hitInfo);
 	}
 	if (material.specularTextureHandle != 0)
 	{
-		float specularSample = texture(sampler2D(material.specularTextureHandle), hitInfo.uv).a;
+		float specularSample = SampleBindlessTexture(material.specularTextureHandle, hitInfo.uv).a;
 		evaluatedMaterial.specular *= specularSample;
 	}
 	if (material.specularColorTextureHandle != 0)
 	{
-		vec3 specularColorSample = texture(sampler2D(material.specularColorTextureHandle), hitInfo.uv).rgb;
+		vec3 specularColorSample = SampleBindlessTexture(material.specularColorTextureHandle, hitInfo.uv).rgb;
 		evaluatedMaterial.specularTint *= length(specularColorSample); // We only care about magnitude, color will be sampled according to Disney
 	}
 	if (material.metallicRoughnessTextureHandle != 0)
 	{
-		vec2 metallicRoughnessSample = texture(sampler2D(material.metallicRoughnessTextureHandle), hitInfo.uv).rg;
+		vec2 metallicRoughnessSample = SampleBindlessTexture(material.metallicRoughnessTextureHandle, hitInfo.uv).rg;
 		evaluatedMaterial.metallic *= metallicRoughnessSample.x;
 		evaluatedMaterial.roughness *= metallicRoughnessSample.y;
 	}
 	if (material.sheenRoughnessTextureHandle != 0)
 	{
-		float sheenRoughnessSample = texture(sampler2D(material.sheenRoughnessTextureHandle), hitInfo.uv).a;
+		float sheenRoughnessSample = SampleBindlessTexture(material.sheenRoughnessTextureHandle, hitInfo.uv).a;
 		evaluatedMaterial.sheenRoughness *= sheenRoughnessSample;
 	}
 	if (material.sheenColorTextureHandle != 0)
 	{
-		vec3 sheenColorSample = texture(sampler2D(material.sheenColorTextureHandle), hitInfo.uv).rgb;
+		vec3 sheenColorSample = SampleBindlessTexture(material.sheenColorTextureHandle, hitInfo.uv).rgb;
 		evaluatedMaterial.sheenTint *= length(sheenColorSample); // We only care about magnitude, color will be sampled according to Disney
 	}
 	if (material.clearcoatTextureHandle != 0)
 	{
-		float clearcoatSample = texture(sampler2D(material.clearcoatTextureHandle), hitInfo.uv).r;
+		float clearcoatSample = SampleBindlessTexture(material.clearcoatTextureHandle, hitInfo.uv).r;
 		evaluatedMaterial.clearcoat *= clearcoatSample;
 	}
 	if (material.clearcoatRoughnessTextureHandle != 0)
 	{
-		float clearcoatRoughnessSample = texture(sampler2D(material.clearcoatRoughnessTextureHandle), hitInfo.uv).g;
+		float clearcoatRoughnessSample = SampleBindlessTexture(material.clearcoatRoughnessTextureHandle, hitInfo.uv).g;
 		evaluatedMaterial.clearcoatRoughness *= clearcoatRoughnessSample;
 	}
 	if (material.transmissionTextureHandle != 0)
 	{
-		float transmissionSample = texture(sampler2D(material.transmissionTextureHandle), hitInfo.uv).r;
+		float transmissionSample = SampleBindlessTexture(material.transmissionTextureHandle, hitInfo.uv).r;
 		evaluatedMaterial.transmission *= transmissionSample;
 	}
 

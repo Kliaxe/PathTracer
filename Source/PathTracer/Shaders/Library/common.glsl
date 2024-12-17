@@ -152,3 +152,24 @@ struct BrdfData
 	float f0;
 	float f90;
 };
+
+// -------------------------------------------------------------------------
+//    Common functions
+// -------------------------------------------------------------------------
+
+uvec2 SplitUint64ToUvec2(uint64_t value)
+{
+	uint handleLow = uint(value & 0xFFFFFFFF);
+	uint handleHight = uint((value >> 32) & 0xFFFFFFFF);
+	return uvec2(handleLow, handleHight);
+}
+
+vec4 SampleBindlessTexture(uint64_t textureHandle, vec2 uv)
+{
+	// Split the 64-bit handle into two 32-bit values
+	uvec2 textureHandleSplit = SplitUint64ToUvec2(textureHandle);
+
+	// Sample the texture
+	sampler2D sampler = sampler2D(textureHandleSplit);
+	return texture(sampler, uv);
+}

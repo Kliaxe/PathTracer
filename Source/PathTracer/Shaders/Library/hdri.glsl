@@ -17,7 +17,7 @@ vec3 SampleHdri(inout uint rngState)
 	// Sample Xi
 	vec2 Xi = RandomValueVec2(rngState);
 
-	vec2 uv = texture(sampler2D(environment.hdriCacheHandle), Xi).rg; // x, y
+	vec2 uv = SampleBindlessTexture(environment.hdriCacheHandle, Xi).rg; // x, y
 	uv.y = 1.0f - uv.y; // Flip
 
 	// Get angle
@@ -38,8 +38,8 @@ vec3 EvaluateHdri(vec3 L, out float pdf)
 
 	vec2 uv = GetSphericalCoordinates(normalize(L));
 
-	color = texture(sampler2D(environment.hdriHandle), uv).rgb;
-	pdf = texture(sampler2D(environment.hdriCacheHandle), uv).b; // Sample probability density
+	color = SampleBindlessTexture(environment.hdriHandle, uv).rgb;
+	pdf = SampleBindlessTexture(environment.hdriCacheHandle, uv).b; // Sample probability density
 
 	float theta = PI * (1.0f - uv.y); // 1.0f for full range...
 	float sinTheta = max(sin(theta), 1e-10f);

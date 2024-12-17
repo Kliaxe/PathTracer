@@ -6,7 +6,7 @@
 // Debug HDRI Cache: Draw red dots on important sources of light
 vec4 DebugHdriCache(vec2 uv)
 {
-	vec3 hdriColor = texture(sampler2D(environment.hdriHandle), vec2(uv.x, -uv.y)).rgb;
+	vec3 hdriColor = SampleBindlessTexture(environment.hdriHandle, vec2(uv.x, -uv.y)).rgb;
 
 	// Sample points
 	for (uint i = 0u; i < 500u; i++)
@@ -14,7 +14,7 @@ vec4 DebugHdriCache(vec2 uv)
 		uint XiState = i;
 		vec2 Xi = RandomValueVec2(XiState);
 
-		vec2 texcoord = texture(sampler2D(environment.hdriCacheHandle), Xi).rg;
+		vec2 texcoord = SampleBindlessTexture(environment.hdriCacheHandle, Xi).rg;
 		texcoord.y = 1.0f - texcoord.y;
 
 		// Mark areas red that follow HDRI cache

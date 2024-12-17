@@ -31,7 +31,6 @@ public:
     inline void UpdateData(std::span<T> data, size_t offsetBytes = 0) { UpdateData(std::span<const T>(data), offsetBytes); }
 };
 
-
 // Call the base implementation with the span converted to bytes
 template<typename T>
 void VertexBufferObject::AllocateData(std::span<const T> data, Usage usage)

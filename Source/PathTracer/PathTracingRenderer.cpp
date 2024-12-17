@@ -10,6 +10,7 @@
 #include "BVH.h"
 #include <stdexcept>
 #include "Geometry/ShaderStorageBufferObject.h"
+#include "Geometry/VertexBufferObject.h"
 #include "Utils/Timer.h"
 #include <algorithm>
 #include <numeric>
